@@ -1,6 +1,5 @@
 import Database from "better-sqlite3";
 import path from "path";
-import fs from "fs";
 
 const DB_PATH = path.join(__dirname, "..", "speedball.db");
 
@@ -28,80 +27,6 @@ db.exec(`
     competitions TEXT NOT NULL DEFAULT '[]'
   );
 `);
-
-// ─── Migration from data.json ───────────────────────────────────────────────
-const DATA_JSON = path.join(__dirname, "..", "..", "data", "data.json");
-
-function migrate() {
-  const tournamentCount = (
-    db.prepare("SELECT COUNT(*) as c FROM tournaments").get() as { c: number }
-  ).c;
-  const teamCount = (
-    db.prepare("SELECT COUNT(*) as c FROM teams").get() as { c: number }
-  ).c;
-
-  if (tournamentCount > 0 || teamCount > 0) return; // already migrated
-
-  if (!fs.existsSync(DATA_JSON)) return;
-
-  try {
-    const raw = fs.readFileSync(DATA_JSON, "utf-8");
-    const data = JSON.parse(raw) as {
-      tournaments?: unknown[];
-      teamStats?: unknown[];
-    };
-
-    const insertTournament = db.prepare(
-      "INSERT OR IGNORE INTO tournaments (id, name, date, phases) VALUES (?, ?, ?, ?)",
-    );
-    const insertTeam = db.prepare(
-      "INSERT OR IGNORE INTO teams (id, name, color, logo, players, competitions) VALUES (?, ?, ?, ?, ?, ?)",
-    );
-
-    const insertMany = db.transaction(() => {
-      for (const t of data.tournaments ?? []) {
-        const tournament = t as {
-          id: string;
-          name: string;
-          date?: string;
-          phases?: unknown[];
-        };
-        insertTournament.run(
-          tournament.id,
-          tournament.name,
-          tournament.date ?? "",
-          JSON.stringify(tournament.phases ?? []),
-        );
-      }
-
-      for (const team of data.teamStats ?? []) {
-        const t = team as {
-          id: string;
-          name: string;
-          color?: string;
-          logo?: string;
-          players?: unknown[];
-          competitions?: unknown[];
-        };
-        insertTeam.run(
-          t.id,
-          t.name,
-          t.color ?? "#f59e0b",
-          t.logo ?? "/team-placeholder.png",
-          JSON.stringify(t.players ?? []),
-          JSON.stringify(t.competitions ?? []),
-        );
-      }
-    });
-
-    insertMany();
-    console.log("✅ Migrated data.json → SQLite");
-  } catch (err) {
-    console.error("Migration error:", err);
-  }
-}
-
-migrate();
 
 // ─── Row helpers ───────────────────────────────────────────────────────────
 export type TournamentRow = {

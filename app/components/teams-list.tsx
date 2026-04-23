@@ -8,11 +8,78 @@ import { fetchTeams, TeamProfile } from "../lib/api-client";
 export default function TeamsList() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [teams, setTeams] = useState<TeamProfile[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem("isAdmin") === "true");
     fetchTeams().then(setTeams).catch(console.error);
   }, []);
+
+  async function handleEditTeam(team: TeamProfile) {
+    const nextName = window.prompt("Team name", team.name);
+    if (!nextName || !nextName.trim()) return;
+
+    const nextColor = window.prompt("Team color (#RRGGBB)", team.color);
+    if (nextColor === null || !nextColor.trim()) return;
+
+    setBusyId(team.id);
+    try {
+      const res = await fetch(`/api/admin/teams/${team.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: nextName.trim(),
+          color: nextColor.trim(),
+          logo: team.logo,
+          players: team.players,
+          competitions: team.competitions,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        throw new Error(err.error ?? "Failed to update team");
+      }
+
+      const updated = (await res.json()) as TeamProfile;
+      setTeams((prev) =>
+        prev.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "Failed to update team",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDeleteTeam(team: TeamProfile) {
+    const confirmed = window.confirm(
+      `Delete team \"${team.name}\"? This action is irreversible.`,
+    );
+    if (!confirmed) return;
+
+    setBusyId(team.id);
+    try {
+      const res = await fetch(`/api/admin/teams/${team.id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        throw new Error(err.error ?? "Failed to delete team");
+      }
+
+      setTeams((prev) => prev.filter((item) => item.id !== team.id));
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "Failed to delete team",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <section className="relative flex flex-1 min-h-0 flex-col rounded-2xl border border-cyan-400/20 bg-slate-900/70 p-4 sm:p-6">
@@ -86,12 +153,35 @@ export default function TeamsList() {
             </div>
 
             <div className="mt-4">
-              <Link
-                href={`/team-stats/${team.id}`}
-                className="inline-flex rounded-full border border-cyan-300/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:border-cyan-200 hover:bg-cyan-500/20"
-              >
-                View competitions
-              </Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/team-stats/${team.id}`}
+                  className="inline-flex rounded-full border border-cyan-300/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:border-cyan-200 hover:bg-cyan-500/20"
+                >
+                  View competitions
+                </Link>
+
+                {isAdmin && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleEditTeam(team)}
+                      disabled={busyId === team.id}
+                      className="rounded-full border border-amber-300/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200 transition hover:border-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTeam(team)}
+                      disabled={busyId === team.id}
+                      className="rounded-full border border-red-300/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:border-red-200 hover:bg-red-500/20 disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </li>
         ))}

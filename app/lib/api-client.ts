@@ -90,6 +90,19 @@ export async function fetchTournamentById(
   return res.json() as Promise<Tournament>;
 }
 
+export async function fetchTournamentFullById(id: string): Promise<{
+  tournament: Tournament;
+  teams: TeamProfile[];
+} | null> {
+  const res = await fetch(`${API_BASE}/api/tournaments/${id}/full`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Failed to fetch full tournament payload");
+  return res.json() as Promise<{
+    tournament: Tournament;
+    teams: TeamProfile[];
+  }>;
+}
+
 export async function createTournament(body: {
   tournamentType: string;
   tournamentName: string;

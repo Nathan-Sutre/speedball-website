@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { fetchTournamentById, Tournament } from "../../lib/tournaments-data";
+import {
+  fetchTournamentFullById,
+  Tournament,
+} from "../../lib/tournaments-data";
 import { getCustomPhases, removeCustomPhase } from "../../lib/custom-phases";
-import { fetchTeams, TeamProfile } from "../../lib/team-stats-data";
+import { TeamProfile } from "../../lib/team-stats-data";
 import {
   addSwissRound,
   createInitialMatches,
@@ -337,19 +340,18 @@ export default function TournamentDetailPage() {
     const admin = localStorage.getItem("isAdmin") === "true";
     setIsAdmin(admin);
 
-    fetchTournamentById(tournamentId)
-      .then((found) => {
-        if (!found) {
+    fetchTournamentFullById(tournamentId)
+      .then((payload) => {
+        if (!payload) {
           router.push("/tournaments");
         } else {
-          setTournament(found);
+          setTournament(payload.tournament);
+          setTeams(payload.teams);
           setCustomPhasesCount(getCustomPhases(tournamentId).length);
           setHiddenBasePhaseKeys(readHiddenBasePhases(tournamentId));
         }
       })
       .catch(() => router.push("/tournaments"));
-
-    fetchTeams().then(setTeams).catch(console.error);
   }, [tournamentId, router]);
 
   const phaseEntries = useMemo(() => {

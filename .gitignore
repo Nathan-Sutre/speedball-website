@@ -41,3 +41,10 @@ yarn-error.log*
 next-env.d.ts
 
 backend/node_modules
+
+# sqlite runtime sidecars
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+
+package-lock.json

@@ -63,6 +63,44 @@ app.get("/api/tournaments", (_req: Request, res: Response) => {
   res.json(rows.map(parseTournament));
 });
 
+app.get("/api/tournaments/:id/full", (req: Request, res: Response) => {
+  const row = db
+    .prepare("SELECT * FROM tournaments WHERE id = ?")
+    .get(req.params.id) as TournamentRow | undefined;
+
+  if (!row) return void res.status(404).json({ error: "Tournament not found" });
+
+  const tournament = parseTournament(row) as {
+    id: string;
+    name: string;
+    date: string;
+    phases: Array<{ teams?: Array<{ name?: string }> }>;
+  };
+
+  const normalize = (value: string) => value.trim().toLowerCase();
+  const phaseTeamNames = new Set(
+    tournament.phases.flatMap((phase) =>
+      (phase.teams ?? [])
+        .map((team) => (team?.name ? normalize(team.name) : ""))
+        .filter(Boolean),
+    ),
+  );
+
+  const teamRows = db.prepare("SELECT * FROM teams").all() as TeamRow[];
+  const teams = teamRows.map(parseTeam).filter((team) => {
+    const inPhase = phaseTeamNames.has(normalize(team.name));
+    const competitions = (team.competitions as Array<{ name?: string }>) ?? [];
+    const inCompetition = competitions.some(
+      (competition) =>
+        typeof competition?.name === "string" &&
+        normalize(competition.name) === normalize(tournament.name),
+    );
+    return inPhase || inCompetition;
+  });
+
+  res.json({ tournament, teams });
+});
+
 app.get("/api/tournaments/:id", (req: Request, res: Response) => {
   const row = db
     .prepare("SELECT * FROM tournaments WHERE id = ?")
