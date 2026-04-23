@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { getTournamentById, Tournament } from "../../lib/tournaments-data";
+import { fetchTournamentById, Tournament } from "../../lib/tournaments-data";
 import { getCustomPhases, removeCustomPhase } from "../../lib/custom-phases";
-import { teamsStatsData } from "../../lib/team-stats-data";
+import { fetchTeams, TeamProfile } from "../../lib/team-stats-data";
 import {
   addSwissRound,
   createInitialMatches,
@@ -320,6 +320,7 @@ export default function TournamentDetailPage() {
   const [hiddenBasePhaseKeys, setHiddenBasePhaseKeys] = useState<string[]>([]);
   const [phaseVersion, setPhaseVersion] = useState(0);
   const [showMatches, setShowMatches] = useState(false);
+  const [teams, setTeams] = useState<TeamProfile[]>([]);
   const [selectedSeedSlotKey, setSelectedSeedSlotKey] = useState<string | null>(
     null,
   );
@@ -336,14 +337,19 @@ export default function TournamentDetailPage() {
     const admin = localStorage.getItem("isAdmin") === "true";
     setIsAdmin(admin);
 
-    const found = getTournamentById(tournamentId);
-    if (!found) {
-      router.push("/tournaments");
-    } else {
-      setTournament(found);
-      setCustomPhasesCount(getCustomPhases(tournamentId).length);
-      setHiddenBasePhaseKeys(readHiddenBasePhases(tournamentId));
-    }
+    fetchTournamentById(tournamentId)
+      .then((found) => {
+        if (!found) {
+          router.push("/tournaments");
+        } else {
+          setTournament(found);
+          setCustomPhasesCount(getCustomPhases(tournamentId).length);
+          setHiddenBasePhaseKeys(readHiddenBasePhases(tournamentId));
+        }
+      })
+      .catch(() => router.push("/tournaments"));
+
+    fetchTeams().then(setTeams).catch(console.error);
   }, [tournamentId, router]);
 
   const phaseEntries = useMemo(() => {
@@ -394,7 +400,7 @@ export default function TournamentDetailPage() {
       return [] as string[];
     }
 
-    const teamStatsTournamentNames = teamsStatsData
+    const teamStatsTournamentNames = teams
       .filter((team) =>
         team.competitions.some(
           (competition) =>
@@ -412,7 +418,7 @@ export default function TournamentDetailPage() {
         ...teamStatsTournamentNames,
       ]),
     );
-  }, [tournament]);
+  }, [tournament, teams]);
 
   const currentPhase = phases[selectedPhase];
   const currentPhaseStorageIndex = phaseEntries[selectedPhase]?.storageIndex;
@@ -1068,12 +1074,12 @@ export default function TournamentDetailPage() {
 
   const teamMetaByName = useMemo(() => {
     return new Map(
-      teamsStatsData.map((team) => [
+      teams.map((team) => [
         team.name.toLowerCase(),
         { logo: team.logo, color: team.color },
       ]),
     );
-  }, []);
+  }, [teams]);
 
   if (!tournament) {
     return null;

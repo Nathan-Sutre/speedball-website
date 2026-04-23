@@ -1,22 +1,44 @@
 "use client";
 
-import { notFound, useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { getMapWinRatePercent } from "@/app/lib/team-stats-data";
 import {
-  getMapWinRatePercent,
-  getTeamById,
-  getTeamCompetitionById,
-} from "@/app/lib/team-stats-data";
+  fetchTeamById,
+  TeamCompetition,
+  TeamProfile,
+} from "@/app/lib/api-client";
 
 export default function TeamCompetitionDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const teamId = params.teamId as string;
   const competitionId = params.competitionId as string;
 
-  const team = getTeamById(teamId);
-  const competition = getTeamCompetitionById(teamId, competitionId);
+  const [team, setTeam] = useState<TeamProfile | null>(null);
+  const [competition, setCompetition] = useState<TeamCompetition | null>(null);
+
+  useEffect(() => {
+    fetchTeamById(teamId)
+      .then((t) => {
+        if (!t) {
+          router.push("/team-stats");
+          return;
+        }
+        const c =
+          t.competitions.find((item) => item.id === competitionId) ?? null;
+        if (!c) {
+          router.push(`/team-stats/${teamId}`);
+          return;
+        }
+        setTeam(t);
+        setCompetition(c);
+      })
+      .catch(() => router.push("/team-stats"));
+  }, [teamId, competitionId, router]);
 
   if (!team || !competition) {
-    notFound();
+    return null;
   }
 
   const won = competition.matches.filter(

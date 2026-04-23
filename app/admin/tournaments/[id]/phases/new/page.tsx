@@ -3,9 +3,8 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { addCustomPhase, getCustomPhases } from "@/app/lib/custom-phases";
-import { getTournamentById } from "@/app/lib/tournaments-data";
 import { savePhaseRuntimeState } from "@/app/lib/phase-runtime";
-import { teamsStatsData } from "../../../../../lib/team-stats-data";
+import { fetchTournamentById, fetchTeams } from "../../../../../lib/api-client";
 
 type PhaseFormat =
   | "round-robin"
@@ -73,55 +72,60 @@ export default function NewPhasePage() {
 
     setIsLoading(true);
 
-    const tournament = getTournamentById(tournamentId);
-    if (!tournament) {
-      router.push("/tournaments");
-      return;
+    try {
+      const tournament = await fetchTournamentById(tournamentId);
+      if (!tournament) {
+        router.push("/tournaments");
+        return;
+      }
+
+      const allTeams = await fetchTeams();
+
+      const currentCount =
+        tournament.phases.length + getCustomPhases(tournamentId).length;
+      const selectedConfig = phaseFormats.find(
+        (format) => format.id === selectedFormat,
+      );
+
+      const phaseName = `${selectedConfig?.label ?? "Phase"} ${currentCount + 1}`;
+      addCustomPhase(tournamentId, { name: phaseName, teams: [] });
+
+      const tournamentTeamNames = allTeams
+        .filter((team) =>
+          team.competitions.some(
+            (competition) =>
+              normalizeTournamentName(competition.name) ===
+              normalizeTournamentName(tournament.name),
+          ),
+        )
+        .map((team) => team.name);
+
+      const participants = Array.from(
+        new Set([
+          ...tournament.phases.flatMap((phase) =>
+            (phase.teams as { name: string }[]).map((team) => team.name),
+          ),
+          ...tournamentTeamNames,
+        ]),
+      );
+
+      savePhaseRuntimeState(tournamentId, phaseName, currentCount, {
+        format: selectedFormat,
+        participants,
+        started: false,
+        lockedTeams: false,
+        swissTotalRounds:
+          selectedFormat === "swiss-round" ? Math.max(1, swissRounds) : 1,
+        swissCurrentRound: 1,
+        matches: [],
+      });
+
+      router.push(`/tournaments/${tournamentId}`);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
     }
-
-    const currentCount =
-      tournament.phases.length + getCustomPhases(tournamentId).length;
-    const selectedConfig = phaseFormats.find(
-      (format) => format.id === selectedFormat,
-    );
-
-    const phaseName = `${selectedConfig?.label ?? "Phase"} ${currentCount + 1}`;
-    addCustomPhase(tournamentId, {
-      name: phaseName,
-      teams: [],
-    });
-
-    const tournamentTeamNames = teamsStatsData
-      .filter((team) =>
-        team.competitions.some(
-          (competition) =>
-            normalizeTournamentName(competition.name) ===
-            normalizeTournamentName(tournament.name),
-        ),
-      )
-      .map((team) => team.name);
-
-    const participants = Array.from(
-      new Set([
-        ...tournament.phases.flatMap((phase) =>
-          phase.teams.map((team) => team.name),
-        ),
-        ...tournamentTeamNames,
-      ]),
-    );
-
-    savePhaseRuntimeState(tournamentId, phaseName, currentCount, {
-      format: selectedFormat,
-      participants,
-      started: false,
-      lockedTeams: false,
-      swissTotalRounds:
-        selectedFormat === "swiss-round" ? Math.max(1, swissRounds) : 1,
-      swissCurrentRound: 1,
-      matches: [],
-    });
-
-    router.push(`/tournaments/${tournamentId}`);
   };
 
   if (!isAdmin) {

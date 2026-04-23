@@ -1,61 +1,50 @@
 "use client";
 
 import Link from "next/link";
-import { notFound, useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import data from "@/data/data.json";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   CompetitionType,
   getCompetitionTypeLabel,
-  getTeamById,
 } from "@/app/lib/team-stats-data";
+import {
+  fetchTeamById,
+  fetchTournaments,
+  TeamProfile,
+  Tournament,
+} from "@/app/lib/api-client";
 
 export default function TeamCompetitionsPage() {
   const params = useParams();
+  const router = useRouter();
   const teamId = params.teamId as string;
-  const team = getTeamById(teamId);
 
+  const [team, setTeam] = useState<TeamProfile | null>(null);
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [filterType, setFilterType] = useState<CompetitionType | "all">("all");
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem("isAdmin") === "true");
-  }, []);
+    fetchTeamById(teamId)
+      .then((found) => {
+        if (!found) router.push("/team-stats");
+        else setTeam(found);
+      })
+      .catch(() => router.push("/team-stats"));
+    fetchTournaments().then(setTournaments).catch(console.error);
+  }, [teamId, router]);
 
-  if (!team) {
-    notFound();
-  }
+  if (!team) return null;
 
-  const filteredCompetitions = useMemo(() => {
-    if (filterType === "all") {
-      return team.competitions;
-    }
+  const filteredCompetitions =
+    filterType === "all"
+      ? team.competitions
+      : team.competitions.filter((c) => c.type === filterType);
 
-    return team.competitions.filter(
-      (competition) => competition.type === filterType,
-    );
-  }, [filterType, team.competitions]);
-
-  const tournamentOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        (data.tournaments ?? [])
-          .map((tournament) => {
-            if (
-              tournament &&
-              typeof tournament === "object" &&
-              "name" in tournament
-            ) {
-              const name = (tournament as { name?: unknown }).name;
-              return typeof name === "string" ? name.trim() : "";
-            }
-
-            return "";
-          })
-          .filter((name) => name.length > 0),
-      ),
-    );
-  }, []);
+  const tournamentOptions = Array.from(
+    new Set(tournaments.map((t) => t.name.trim()).filter(Boolean)),
+  );
 
   return (
     <div className="mx-auto flex flex-1 min-h-0 w-full max-w-[98vw] flex-col px-2 py-3 sm:px-4">

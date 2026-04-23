@@ -3,13 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { teamsStatsData } from "../lib/team-stats-data";
+import { fetchTeams, TeamProfile } from "../lib/api-client";
 
 export default function TeamsList() {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [teams, setTeams] = useState<TeamProfile[]>([]);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem("isAdmin") === "true");
+    fetchTeams().then(setTeams).catch(console.error);
   }, []);
 
   return (
@@ -22,7 +24,7 @@ export default function TeamsList() {
       </p>
 
       <ul className="flex-1 min-h-0 space-y-3 overflow-y-auto rounded-xl border border-white/10 bg-slate-950/40 p-3">
-        {teamsStatsData.map((team) => (
+        {teams.map((team) => (
           <li
             key={team.id}
             className="rounded-xl border border-white/10 bg-slate-900/50 p-3"

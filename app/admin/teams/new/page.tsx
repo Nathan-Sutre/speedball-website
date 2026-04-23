@@ -1,21 +1,27 @@
-import data from "@/data/data.json";
+"use client";
 
-export const metadata = {
-  title: "New Team - Admin",
-};
-
-const tournamentOptions = [
-  ...new Set([
-    ...data.tournaments.map((tournament) => tournament.name),
-    ...data.teamStats.flatMap((team) =>
-      team.competitions
-        .filter((competition) => competition.type === "teamcup")
-        .map((competition) => competition.name),
-    ),
-  ]),
-];
+import { useEffect, useState } from "react";
+import { fetchAllData } from "@/app/lib/api-client";
 
 export default function NewTeamPage() {
+  const [tournamentOptions, setTournamentOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchAllData()
+      .then(({ tournaments, teamStats }) => {
+        const names = new Set([
+          ...tournaments.map((t) => t.name),
+          ...teamStats.flatMap((team) =>
+            team.competitions
+              .filter((c) => c.type === "teamcup")
+              .map((c) => c.name),
+          ),
+        ]);
+        setTournamentOptions(Array.from(names));
+      })
+      .catch(console.error);
+  }, []);
+
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-[98vw] flex-col px-2 py-4 sm:px-4">
       <section className="mx-auto w-full max-w-2xl rounded-2xl border border-amber-400/20 bg-slate-900/70 p-6">

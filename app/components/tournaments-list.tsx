@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { tournaments } from "../lib/tournaments-data";
+import { fetchTournaments, Tournament } from "../lib/api-client";
 
 export default function TournamentsList() {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem("isAdmin") === "true");
+    fetchTournaments().then(setTournaments).catch(console.error);
   }, []);
 
   return (

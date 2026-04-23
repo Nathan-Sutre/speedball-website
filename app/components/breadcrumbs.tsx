@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { getTournamentById } from "@/app/lib/tournaments-data";
-import { getTeamById, getTeamCompetitionById } from "@/app/lib/team-stats-data";
 
 const staticLabels: Record<string, string> = {
   tournaments: "Tournaments",
@@ -27,35 +25,11 @@ function titleCaseSegment(segment: string): string {
 
 function getSegmentLabel(
   segment: string,
-  index: number,
-  all: string[],
+  _index: number,
+  _all: string[],
 ): string {
   if (staticLabels[segment]) {
     return staticLabels[segment];
-  }
-
-  if (all[0] === "tournaments" && index === 1) {
-    const tournament = getTournamentById(segment);
-    if (tournament) {
-      return tournament.name;
-    }
-  }
-
-  if (all[0] === "team-stats" && index === 1) {
-    const team = getTeamById(segment);
-    if (team) {
-      return team.name;
-    }
-  }
-
-  if (all[0] === "team-stats" && index === 2) {
-    const teamId = all[1];
-    if (teamId) {
-      const competition = getTeamCompetitionById(teamId, segment);
-      if (competition) {
-        return competition.name;
-      }
-    }
   }
 
   return titleCaseSegment(segment);

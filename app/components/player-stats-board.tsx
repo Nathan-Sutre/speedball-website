@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import data from "@/data/data.json";
+import { useEffect, useMemo, useState } from "react";
+import { fetchAllData } from "@/app/lib/api-client";
 
 type PlayerStats = {
   login: string;
@@ -97,9 +97,8 @@ const modeMaxValues: Record<Exclude<Mode, "public" | "all">, number> = {
   fastcup: 2,
 };
 
-const demoRows: PlayerStats[] = data.playerStats as PlayerStats[];
-
 export default function PlayerStatsBoard() {
+  const [rows, setRows] = useState<PlayerStats[]>([]);
   const [visibleKeys, setVisibleKeys] =
     useState<Array<keyof PlayerStats>>(defaultVisibleKeys);
 
@@ -109,13 +108,23 @@ export default function PlayerStatsBoard() {
   const [mode, setMode] = useState<Mode>("public");
   const [seasonValue, setSeasonValue] = useState<number>(1);
 
+  useEffect(() => {
+    fetchAllData()
+      .then((payload) => {
+        const playerStats = (payload as { playerStats?: PlayerStats[] })
+          .playerStats;
+        setRows(Array.isArray(playerStats) ? playerStats : []);
+      })
+      .catch(console.error);
+  }, []);
+
   const visibleColumns = useMemo(
     () => columns.filter((column) => visibleKeys.includes(column.key)),
     [visibleKeys],
   );
 
   const sortedRows = useMemo(() => {
-    return [...demoRows].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
       const cmp =
@@ -124,7 +133,7 @@ export default function PlayerStatsBoard() {
           : String(av).localeCompare(String(bv));
       return sortDir === "desc" ? -cmp : cmp;
     });
-  }, [sortKey, sortDir]);
+  }, [rows, sortKey, sortDir]);
 
   const useHorizontalScroll = visibleColumns.length > defaultVisibleKeys.length;
 

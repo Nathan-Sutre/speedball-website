@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:api": "npm --prefix backend run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:api\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -14,7 +16,8 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-svg-pan-zoom": "^3.13.1",
-    "styled-components": "^6.4.1"
+    "styled-components": "^6.4.1",
+    "concurrently": "^9.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
