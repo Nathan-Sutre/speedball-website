@@ -1,37 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchAllData } from "@/app/lib/api-client";
+import {
+  fetchPlayerStats,
+  fetchTournamentEditions,
+  PlayerStatsRow,
+  TournamentFilterType,
+  TournamentType,
+} from "@/app/lib/api-client";
 
-type PlayerStats = {
-  login: string;
-  nickname: string;
-  rank: number;
-  ladderPoints: number;
-  points: number;
-  damage: number;
-  shots: number;
-  kills: number;
-  deaths: number;
-  kdRatio: number;
-  accuracy: string;
-  passesDone: number;
-  passesReceived: number;
-  ballHits: number;
-  backstabs: number;
-  backspaced: number;
-  ballGivenAway: number;
-  ballStolen: number;
-  ballPossession: string;
-  nearMisses: number;
-  captureTries: number;
-  captures: number;
-  captureTotalPercent: string;
-  captureTotalTime: string;
-  playtime: string;
-  mapsPlayed: number;
-  wonMap: number;
-};
+type PlayerStats = PlayerStatsRow;
 
 const columns: Array<{ label: string; key: keyof PlayerStats }> = [
   { label: "Login", key: "login" },
@@ -80,43 +58,67 @@ const defaultVisibleKeys: Array<keyof PlayerStats> = [
   "ballHits",
 ];
 
-type Mode =
-  | "public"
-  | "all"
-  | "speedball league"
-  | "speedball championship"
-  | "funcup"
-  | "teamcup"
-  | "fastcup";
+const tournamentTypes: TournamentType[] = ["sbl", "sbc", "funcup", "teamcup"];
 
-const modeMaxValues: Record<Exclude<Mode, "public" | "all">, number> = {
-  "speedball league": 5,
-  "speedball championship": 3,
-  funcup: 2,
-  teamcup: 4,
-  fastcup: 2,
-};
+function formatTournamentType(type: TournamentFilterType): string {
+  if (type === "sbl") return "SBL";
+  if (type === "sbc") return "SBC";
+  if (type === "funcup") return "Funcup";
+  if (type === "teamcup") return "Teamcup";
+  if (type === "public") return "Public";
+  return "All";
+}
 
 export default function PlayerStatsBoard() {
   const [rows, setRows] = useState<PlayerStats[]>([]);
   const [visibleKeys, setVisibleKeys] =
     useState<Array<keyof PlayerStats>>(defaultVisibleKeys);
-
   const [sortKey, setSortKey] = useState<keyof PlayerStats>("points");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const [mode, setMode] = useState<Mode>("public");
-  const [seasonValue, setSeasonValue] = useState<number>(1);
+  const [typeFilter, setTypeFilter] = useState<TournamentFilterType>("all");
+  const [editionOptions, setEditionOptions] = useState<number[]>([]);
+  const [editionFilter, setEditionFilter] = useState<number | null>(null);
 
   useEffect(() => {
-    fetchAllData()
-      .then((payload) => {
-        const playerStats = (payload as { playerStats?: PlayerStats[] })
-          .playerStats;
-        setRows(Array.isArray(playerStats) ? playerStats : []);
+    const showEdition = tournamentTypes.includes(typeFilter as TournamentType);
+    if (!showEdition) {
+      setEditionOptions([]);
+      setEditionFilter(null);
+      return;
+    }
+
+    fetchTournamentEditions(typeFilter as TournamentType)
+      .then((editions) => {
+        setEditionOptions(editions);
+        setEditionFilter((current) => {
+          if (current && editions.includes(current)) return current;
+          return editions[0] ?? null;
+        });
       })
-      .catch(console.error);
-  }, []);
+      .catch((error) => {
+        console.error(error);
+        setEditionOptions([]);
+        setEditionFilter(null);
+      });
+  }, [typeFilter]);
+
+  useEffect(() => {
+    const showEdition = tournamentTypes.includes(typeFilter as TournamentType);
+    const effectiveEdition = showEdition ? editionFilter : null;
+
+    if (showEdition && effectiveEdition === null) {
+      setRows([]);
+      return;
+    }
+
+    fetchPlayerStats({ type: typeFilter, edition: effectiveEdition })
+      .then(setRows)
+      .catch((error) => {
+        console.error(error);
+        setRows([]);
+      });
+  }, [typeFilter, editionFilter]);
 
   const visibleColumns = useMemo(
     () => columns.filter((column) => visibleKeys.includes(column.key)),
@@ -136,19 +138,13 @@ export default function PlayerStatsBoard() {
   }, [rows, sortKey, sortDir]);
 
   const useHorizontalScroll = visibleColumns.length > defaultVisibleKeys.length;
-
-  const isPublic = mode === "public" || mode === "all";
-  const maxValue = isPublic
-    ? 1
-    : modeMaxValues[mode as Exclude<Mode, "public" | "all">];
-  const seasonOptions = Array.from(
-    { length: maxValue },
-    (_, i) => maxValue - i,
+  const showEditionFilter = tournamentTypes.includes(
+    typeFilter as TournamentType,
   );
 
   function handleSort(key: keyof PlayerStats) {
     if (key === sortKey) {
-      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+      setSortDir((currentDir) => (currentDir === "desc" ? "asc" : "desc"));
     } else {
       setSortKey(key);
       setSortDir("desc");
@@ -158,12 +154,9 @@ export default function PlayerStatsBoard() {
   function toggleColumn(key: keyof PlayerStats) {
     setVisibleKeys((current) => {
       if (current.includes(key)) {
-        if (current.length === 1) {
-          return current;
-        }
+        if (current.length === 1) return current;
         return current.filter((item) => item !== key);
       }
-
       return [...current, key];
     });
   }
@@ -174,40 +167,43 @@ export default function PlayerStatsBoard() {
         <h2 className="text-lg font-semibold text-white sm:text-xl">
           Player Stats
         </h2>
+
         <div className="flex flex-wrap items-center gap-2">
           <select
-            value={mode}
-            onChange={(e) => {
-              setMode(e.target.value as Mode);
-              setSeasonValue(1);
-            }}
+            value={typeFilter}
+            onChange={(e) =>
+              setTypeFilter(e.target.value as TournamentFilterType)
+            }
             className="rounded-full border border-cyan-300/30 bg-slate-950/70 px-3 py-1 text-xs font-medium text-cyan-200 transition hover:border-cyan-200"
           >
             <option value="all">All</option>
             <option value="public">Public</option>
-            <option value="speedball league">Speedball League</option>
-            <option value="speedball championship">
-              Speedball Championship
-            </option>
+            <option value="sbl">SBL</option>
+            <option value="sbc">SBC</option>
             <option value="funcup">Funcup</option>
             <option value="teamcup">Teamcup</option>
-            <option value="fastcup">Fastcup</option>
           </select>
 
-          {!isPublic && (
+          {showEditionFilter && (
             <select
-              value={seasonValue}
-              onChange={(e) => setSeasonValue(Number(e.target.value))}
+              value={editionFilter ?? ""}
+              onChange={(e) => setEditionFilter(Number(e.target.value))}
               className="rounded-full border border-cyan-300/30 bg-slate-950/70 px-3 py-1 text-xs font-medium text-cyan-200 transition hover:border-cyan-200"
+              disabled={editionOptions.length === 0}
             >
-              {seasonOptions.map((num) => (
-                <option key={num} value={num}>
-                  #{num}
-                </option>
-              ))}
+              {editionOptions.length === 0 ? (
+                <option value="">No editions</option>
+              ) : (
+                editionOptions.map((num) => (
+                  <option key={num} value={num}>
+                    {formatTournamentType(typeFilter)} #{num}
+                  </option>
+                ))
+              )}
             </select>
           )}
         </div>
+
         <details className="relative">
           <summary className="cursor-pointer list-none rounded-full border border-cyan-300/30 px-3 py-1 text-xs font-medium text-cyan-200 transition hover:border-cyan-200 hover:text-cyan-100">
             Columns ({visibleColumns.length}/{columns.length})
@@ -256,10 +252,10 @@ export default function PlayerStatsBoard() {
                     {column.label}
                     {sortKey === column.key ? (
                       <span className="text-cyan-400">
-                        {sortDir === "desc" ? "↓" : "↑"}
+                        {sortDir === "desc" ? "v" : "^"}
                       </span>
                     ) : (
-                      <span className="text-slate-600">↕</span>
+                      <span className="text-slate-600">+-</span>
                     )}
                   </span>
                 </th>
@@ -282,6 +278,17 @@ export default function PlayerStatsBoard() {
                 ))}
               </tr>
             ))}
+
+            {sortedRows.length === 0 && (
+              <tr>
+                <td
+                  colSpan={visibleColumns.length || 1}
+                  className="px-3 py-6 text-center text-sm text-slate-400"
+                >
+                  No player stats for this filter.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -2,17 +2,58 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchTournaments, Tournament } from "../lib/api-client";
+import {
+  fetchTournamentEditions,
+  fetchTournaments,
+  Tournament,
+  TournamentType,
+} from "../lib/api-client";
+
+const tournamentTypes: TournamentType[] = ["sbl", "sbc", "funcup", "teamcup"];
+
+function formatTournamentType(type: TournamentType): string {
+  if (type === "sbl") return "SBL";
+  if (type === "sbc") return "SBC";
+  if (type === "funcup") return "Funcup";
+  return "Teamcup";
+}
 
 export default function TournamentsList() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [typeFilter, setTypeFilter] = useState<TournamentType>("sbl");
+  const [editionOptions, setEditionOptions] = useState<number[]>([]);
+  const [editionFilter, setEditionFilter] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchTournamentEditions(typeFilter)
+      .then((editions) => {
+        setEditionOptions(editions);
+        setEditionFilter((current) => {
+          if (current && editions.includes(current)) return current;
+          return editions[0] ?? null;
+        });
+      })
+      .catch((error) => {
+        console.error(error);
+        setEditionOptions([]);
+        setEditionFilter(null);
+      });
+  }, [typeFilter]);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem("isAdmin") === "true");
-    fetchTournaments().then(setTournaments).catch(console.error);
-  }, []);
+
+    if (editionFilter === null) {
+      setTournaments([]);
+      return;
+    }
+
+    fetchTournaments({ type: typeFilter, edition: editionFilter })
+      .then(setTournaments)
+      .catch(console.error);
+  }, [typeFilter, editionFilter]);
 
   async function handleEditTournament(tournament: Tournament) {
     const nextName = window.prompt("Tournament name", tournament.name);
@@ -83,45 +124,84 @@ export default function TournamentsList() {
         Tournaments
       </h2>
 
-      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-white/10 rounded-xl border border-white/10 bg-slate-950/40">
-        {tournaments.map((tournament) => (
-          <div
-            key={tournament.id}
-            className="px-4 py-3 transition hover:bg-white/5"
-          >
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-              <Link href={`/tournaments/${tournament.id}`} className="min-w-0">
-                <p className="truncate text-sm font-medium text-slate-100">
-                  {tournament.name}
-                </p>
-              </Link>
-              <p className="text-sm text-slate-300">
-                {tournament.date ? tournament.date : "Running"}
-              </p>
-            </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as TournamentType)}
+          className="rounded-full border border-cyan-300/30 bg-slate-950/70 px-3 py-1 text-xs font-medium text-cyan-200 transition hover:border-cyan-200"
+        >
+          <option value="sbl">SBL</option>
+          <option value="sbc">SBC</option>
+          <option value="funcup">Funcup</option>
+          <option value="teamcup">Teamcup</option>
+        </select>
 
-            {isAdmin && (
-              <div className="mt-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleEditTournament(tournament)}
-                  disabled={busyId === tournament.id}
-                  className="rounded-md border border-cyan-300/40 bg-cyan-500/10 px-2 py-1 text-xs font-semibold text-cyan-200 transition hover:border-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteTournament(tournament)}
-                  disabled={busyId === tournament.id}
-                  className="rounded-md border border-red-300/40 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-200 transition hover:border-red-200 hover:bg-red-500/20 disabled:opacity-50"
-                >
-                  Delete
-                </button>
-              </div>
-            )}
+        <select
+          value={editionFilter ?? ""}
+          onChange={(e) => setEditionFilter(Number(e.target.value))}
+          className="rounded-full border border-cyan-300/30 bg-slate-950/70 px-3 py-1 text-xs font-medium text-cyan-200 transition hover:border-cyan-200"
+          disabled={editionOptions.length === 0}
+        >
+          {editionOptions.length === 0 ? (
+            <option value="">No editions</option>
+          ) : (
+            editionOptions.map((edition) => (
+              <option key={edition} value={edition}>
+                {formatTournamentType(typeFilter)} #{edition}
+              </option>
+            ))
+          )}
+        </select>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-white/10 rounded-xl border border-white/10 bg-slate-950/40">
+        {tournaments.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-slate-400">
+            No tournaments found for this filter.
           </div>
-        ))}
+        ) : (
+          tournaments.map((tournament) => (
+            <div
+              key={tournament.id}
+              className="px-4 py-3 transition hover:bg-white/5"
+            >
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                <Link
+                  href={`/tournaments/${tournament.id}`}
+                  className="min-w-0"
+                >
+                  <p className="truncate text-sm font-medium text-slate-100">
+                    {tournament.name}
+                  </p>
+                </Link>
+                <p className="text-sm text-slate-300">
+                  {tournament.date ? tournament.date : "Running"}
+                </p>
+              </div>
+
+              {isAdmin && (
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleEditTournament(tournament)}
+                    disabled={busyId === tournament.id}
+                    className="rounded-md border border-cyan-300/40 bg-cyan-500/10 px-2 py-1 text-xs font-semibold text-cyan-200 transition hover:border-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTournament(tournament)}
+                    disabled={busyId === tournament.id}
+                    className="rounded-md border border-red-300/40 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-200 transition hover:border-red-200 hover:bg-red-500/20 disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </div>
 
       {isAdmin && (

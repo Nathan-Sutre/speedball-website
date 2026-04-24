@@ -11,6 +11,7 @@ export default function NewTournamentPage() {
     tournamentType: "sbl",
     tournamentName: "",
     tournamentDate: "",
+    tournamentEdition: "",
   });
 
   const handleChange = (
@@ -22,6 +23,7 @@ export default function NewTournamentPage() {
       type: "tournamentType",
       name: "tournamentName",
       date: "tournamentDate",
+      edition: "tournamentEdition",
     };
     setFormData((prev) => ({
       ...prev,
@@ -32,8 +34,18 @@ export default function NewTournamentPage() {
   const handleSave = async () => {
     setError("");
 
-    if (!formData.tournamentName || !formData.tournamentDate) {
+    if (
+      !formData.tournamentName ||
+      !formData.tournamentDate ||
+      !formData.tournamentEdition
+    ) {
       setError("Please fill in all fields");
+      return;
+    }
+
+    const edition = Number(formData.tournamentEdition);
+    if (!Number.isInteger(edition) || edition <= 0) {
+      setError("Tournament edition must be a positive integer");
       return;
     }
 
@@ -42,7 +54,10 @@ export default function NewTournamentPage() {
       const res = await fetch("/api/admin/tournaments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          edition,
+        }),
       });
 
       if (!res.ok) {
@@ -65,7 +80,7 @@ export default function NewTournamentPage() {
           Create Tournament
         </h1>
         <p className="mb-6 text-sm text-slate-300">
-          Renseigne le type de tournoi : SBL ou SBC.
+          Renseigne le type de tournoi et son numero d'edition.
         </p>
 
         {error && (
@@ -90,7 +105,27 @@ export default function NewTournamentPage() {
             >
               <option value="sbl">Speedball League (SBL)</option>
               <option value="sbc">Speedball Championship (SBC)</option>
+              <option value="funcup">Funcup</option>
+              <option value="teamcup">Teamcup</option>
             </select>
+          </div>
+
+          <div>
+            <label
+              className="mb-1 block text-sm text-slate-300"
+              htmlFor="tournament-edition"
+            >
+              Tournament Edition
+            </label>
+            <input
+              id="tournament-edition"
+              type="number"
+              min={1}
+              placeholder="10"
+              value={formData.tournamentEdition}
+              onChange={handleChange}
+              className="w-full rounded-lg border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-300"
+            />
           </div>
 
           <div>

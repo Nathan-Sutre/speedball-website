@@ -30,7 +30,7 @@ export default function AdminAuthForm() {
           className="mb-1 block text-sm text-slate-300"
           htmlFor="admin-username"
         >
-          Identifiant
+          Login
         </label>
         <input
           id="admin-username"
@@ -47,7 +47,7 @@ export default function AdminAuthForm() {
           className="mb-1 block text-sm text-slate-300"
           htmlFor="admin-password"
         >
-          Mot de passe
+          Password
         </label>
         <input
           id="admin-password"

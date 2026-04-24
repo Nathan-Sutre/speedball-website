@@ -9,6 +9,7 @@ const primaryLinks = [
   { label: "Tournaments", href: "/tournaments" },
   { label: "Last Games", href: "/last-games" },
   { label: "Player Stats", href: "/player-stats" },
+  { label: "Map Stats", href: "/map-stats" },
   { label: "Team Stats", href: "/team-stats" },
 ];
 
