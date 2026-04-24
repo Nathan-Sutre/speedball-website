@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type LastGame = {
@@ -62,58 +63,60 @@ export default function LastGamesPage() {
           ) : (
             games.map((game) => (
               <li key={game.id} className="px-4 py-3 text-sm">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <span className="text-slate-100 font-medium">
-                    Game #{game.id}
-                  </span>
-                  <span className="text-slate-400 text-xs">
-                    {new Date(game.played_at).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-slate-300">
-                    {game.home_team_name || "Team 1"}
-                  </span>
-                  <div className="flex gap-2 items-center">
-                    <span
-                      className={`px-2 py-1 rounded font-bold ${
-                        game.home_score > game.away_score
-                          ? "bg-blue-600 text-white"
-                          : "bg-slate-700 text-slate-300"
-                      }`}
-                    >
-                      {game.home_score}
-                    </span>
-                    <span className="text-slate-500">vs</span>
-                    <span
-                      className={`px-2 py-1 rounded font-bold ${
-                        game.away_score > game.home_score
-                          ? "bg-red-600 text-white"
-                          : "bg-slate-700 text-slate-300"
-                      }`}
-                    >
-                      {game.away_score}
+                <Link
+                  href={`/last-games/${game.id}`}
+                  className="block hover:bg-slate-900/50 -mx-4 -my-3 px-4 py-3 rounded transition"
+                >
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="text-slate-100 font-medium">
+                        {game.map_name || "Unknown Map"}
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-slate-400 text-xs">
+                        {new Date(game.played_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <span className="text-cyan-400/60 hover:text-cyan-400 transition">
+                      View Details →
                     </span>
                   </div>
-                  <span className="text-slate-300">
-                    {game.away_team_name || "Team 2"}
-                  </span>
-                </div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {game.tournament_id
-                    ? `Tournament #${game.tournament_id}`
-                    : "Public match"}
-                </div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {game.map_name ? `Map: ${game.map_name}` : "Map: -"}
-                  {game.duration_seconds > 0
-                    ? ` | ${Math.floor(game.duration_seconds / 60)}m`
-                    : ""}
-                </div>
-                <div className="mt-1 text-xs text-slate-500">
-                  Blue: {game.blue_players.join(", ") || "-"} | Red:{" "}
-                  {game.red_players.join(", ") || "-"}
-                </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-300 flex-1">
+                      {game.home_team_name || "Team 1"}{" "}
+                      <span className="text-slate-500">
+                        ({game.blue_players.length})
+                      </span>
+                    </span>
+                    <div className="flex gap-2 items-center">
+                      <span
+                        className={`px-2 py-1 rounded font-bold ${
+                          game.home_score > game.away_score
+                            ? "bg-blue-600 text-white"
+                            : "bg-slate-700 text-slate-300"
+                        }`}
+                      >
+                        {game.home_score}
+                      </span>
+                      <span className="text-slate-500">vs</span>
+                      <span
+                        className={`px-2 py-1 rounded font-bold ${
+                          game.away_score > game.home_score
+                            ? "bg-red-600 text-white"
+                            : "bg-slate-700 text-slate-300"
+                        }`}
+                      >
+                        {game.away_score}
+                      </span>
+                    </div>
+                    <span className="text-slate-300 flex-1 text-right">
+                      <span className="text-slate-500">
+                        ({game.red_players.length})
+                      </span>{" "}
+                      {game.away_team_name || "Team 2"}
+                    </span>
+                  </div>
+                </Link>
               </li>
             ))
           )}

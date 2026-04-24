@@ -114,6 +114,7 @@ export type PlayerMatchStatsRaw = {
   tournament_name: string | null;
   tournament_type: TournamentType | "public" | null;
   tournament_edition: number | null;
+  duration_seconds: number;
   login: string;
   nickname?: string;
   team?: string;

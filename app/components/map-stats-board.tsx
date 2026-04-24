@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   fetchMapStats,
@@ -136,9 +137,16 @@ export default function MapStatsBoard() {
               return (
                 <tr
                   key={`${row.mapId}-${row.mapName}`}
-                  className="border-b border-white/8 text-slate-200"
+                  className="border-b border-white/8 text-slate-200 hover:bg-slate-800/30 transition"
                 >
-                  <td className="px-3 py-2 text-slate-100">{row.mapName}</td>
+                  <td className="px-3 py-2 text-slate-100">
+                    <Link
+                      href={`/maps/${row.mapId}`}
+                      className="text-cyan-400 hover:text-cyan-300 hover:underline"
+                    >
+                      {row.mapName}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2 text-right">{row.playedCount}</td>
                   <td className="px-3 py-2 text-right">{row.wonCount}</td>
                   <td className="px-3 py-2 text-right">{row.blueWins}</td>

@@ -8,12 +8,26 @@ const staticLabels: Record<string, string> = {
   "team-stats": "Team Stats",
   "player-stats": "Player Stats",
   "map-stats": "Map Stats",
+  players: "Player Stats",
+  maps: "Map Stats",
   "last-games": "Last Games",
   admin: "Admin",
   teams: "Teams",
   new: "New",
   phases: "Phases",
 };
+
+function getSegmentHref(index: number, segments: string[]): string {
+  if (index === 0 && segments[0] === "maps") {
+    return "/map-stats";
+  }
+
+  if (index === 0 && segments[0] === "players") {
+    return "/player-stats";
+  }
+
+  return `/${segments.slice(0, index + 1).join("/")}`;
+}
 
 function titleCaseSegment(segment: string): string {
   return segment
@@ -59,7 +73,7 @@ export default function Breadcrumbs() {
             </Link>
           </li>
           {segments.map((segment, index) => {
-            const href = `/${segments.slice(0, index + 1).join("/")}`;
+            const href = getSegmentHref(index, segments);
             const isLast = index === segments.length - 1;
             const label = getSegmentLabel(segment, index, segments);
 

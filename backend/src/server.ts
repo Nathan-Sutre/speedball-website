@@ -777,7 +777,7 @@ app.get("/api/last-games/GetOne/:id", (req: Request, res: Response) => {
     .prepare(
       `SELECT m.id, m.tournament_id, m.home_team_id, m.away_team_id,
               m.map_id, m.duration_seconds, m.blue_players, m.red_players,
-              m.home_score, m.away_score, m.played_at,
+              m.home_score, m.away_score, m.played_at, m.player_stats_json,
               mp.name AS map_name,
               ht.name AS home_team_name,
               at.name AS away_team_name
@@ -792,16 +792,42 @@ app.get("/api/last-games/GetOne/:id", (req: Request, res: Response) => {
         map_name: string | null;
         home_team_name: string | null;
         away_team_name: string | null;
+        player_stats_json?: string;
       })
     | undefined;
 
   if (!row) return void res.status(404).json({ error: "Last game not found" });
+
+  let playerStats: RawPlayerMatchStat[] = [];
+  try {
+    const decoded = JSON.parse(row.player_stats_json ?? "[]") as unknown[];
+    if (Array.isArray(decoded)) {
+      playerStats = decoded
+        .map(normalizeRawPlayerStat)
+        .filter((entry): entry is RawPlayerMatchStat => entry !== null);
+    }
+  } catch {
+    playerStats = [];
+  }
+
+  if (playerStats.length === 0) {
+    const bluePlayers = JSON.parse(row.blue_players || "[]") as string[];
+    const redPlayers = JSON.parse(row.red_players || "[]") as string[];
+    playerStats = [
+      ...bluePlayers.map((login) => ({ login, team: "blue" })),
+      ...redPlayers.map((login) => ({ login, team: "red" })),
+    ]
+      .map(normalizeRawPlayerStat)
+      .filter((entry): entry is RawPlayerMatchStat => entry !== null);
+  }
 
   res.json({
     ...parseMatch(row),
     map_name: row.map_name,
     home_team_name: row.home_team_name,
     away_team_name: row.away_team_name,
+    duration_seconds: row.duration_seconds,
+    player_stats: playerStats,
   });
 });
 
@@ -1035,6 +1061,7 @@ app.get("/api/player-stats/GetRaw", (req: Request, res: Response) => {
       `SELECT
          m.id AS match_id,
          m.tournament_id,
+         m.duration_seconds,
          m.blue_players,
          m.red_players,
          m.player_stats_json,
@@ -1049,6 +1076,7 @@ app.get("/api/player-stats/GetRaw", (req: Request, res: Response) => {
     .all(...params) as Array<{
     match_id: number;
     tournament_id: number | null;
+    duration_seconds: number;
     blue_players: string;
     red_players: string;
     player_stats_json?: string;
@@ -1064,6 +1092,7 @@ app.get("/api/player-stats/GetRaw", (req: Request, res: Response) => {
       tournament_name: string | null;
       tournament_type: TournamentType | "public" | null;
       tournament_edition: number | null;
+      duration_seconds: number;
     }
   > = [];
 
@@ -1098,6 +1127,7 @@ app.get("/api/player-stats/GetRaw", (req: Request, res: Response) => {
           tournament_name: row.tournament_name,
           tournament_type: row.tournament_type ?? "public",
           tournament_edition: row.tournament_edition,
+          duration_seconds: row.duration_seconds,
         });
       }
       continue;
@@ -1111,6 +1141,7 @@ app.get("/api/player-stats/GetRaw", (req: Request, res: Response) => {
         tournament_name: row.tournament_name,
         tournament_type: row.tournament_type ?? "public",
         tournament_edition: row.tournament_edition,
+        duration_seconds: row.duration_seconds,
       });
     }
   }
@@ -1291,6 +1322,191 @@ app.get("/api/maps-stats/GetAll", (req: Request, res: Response) => {
   }));
 
   res.json(payload);
+});
+
+// Get One Map
+app.get("/api/maps/GetOne/:id", (req: Request, res: Response) => {
+  const id = toId(req.params.id);
+  if (!id) return void res.status(400).json({ error: "Invalid map id" });
+
+  const map = db
+    .prepare("SELECT id, name, image FROM maps WHERE id = ?")
+    .get(id) as { id: number; name: string; image: string } | undefined;
+
+  if (!map) return void res.status(404).json({ error: "Map not found" });
+
+  const stats = db
+    .prepare(
+      `SELECT 
+         COUNT(*) AS playedCount,
+         SUM(CASE WHEN home_score > away_score THEN 1 ELSE 0 END) AS homeWins,
+         SUM(CASE WHEN away_score > home_score THEN 1 ELSE 0 END) AS awayWins,
+         SUM(CASE WHEN home_score = away_score THEN 1 ELSE 0 END) AS draws,
+         SUM(duration_seconds) AS totalSeconds,
+         AVG(home_score) AS avgHomeScore,
+         AVG(away_score) AS avgAwayScore
+       FROM matches WHERE map_id = ?`,
+    )
+    .get(id) as {
+    playedCount: number;
+    homeWins: number;
+    awayWins: number;
+    draws: number;
+    totalSeconds: number;
+    avgHomeScore: number;
+    avgAwayScore: number;
+  };
+
+  res.json({
+    ...map,
+    playedCount: stats.playedCount ?? 0,
+    homeWins: stats.homeWins ?? 0,
+    awayWins: stats.awayWins ?? 0,
+    draws: stats.draws ?? 0,
+    totalSeconds: stats.totalSeconds ?? 0,
+    totalMinutes: Math.round((stats.totalSeconds ?? 0) / 60),
+    avgHomeScore: Math.round((stats.avgHomeScore ?? 0) * 100) / 100,
+    avgAwayScore: Math.round((stats.avgAwayScore ?? 0) * 100) / 100,
+  });
+});
+
+// Get One Player by Login
+app.get("/api/players/GetByLogin/:login", (req: Request, res: Response) => {
+  const login = (req.params.login ?? "").trim().toLowerCase();
+  if (!login) return void res.status(400).json({ error: "Invalid login" });
+
+  const matchRows = db
+    .prepare(
+      `SELECT m.id, m.duration_seconds, m.blue_players, m.red_players, m.player_stats_json
+       FROM matches m
+       WHERE LOWER(m.blue_players) LIKE ? OR LOWER(m.red_players) LIKE ? OR LOWER(m.player_stats_json) LIKE ?
+       ORDER BY m.played_at DESC`,
+    )
+    .all(`%"${login}"%`, `%"${login}"%`, `%"login":"${login}"%`) as Array<{
+    id: number;
+    duration_seconds: number;
+    blue_players: string;
+    red_players: string;
+    player_stats_json?: string;
+  }>;
+
+  let totalStats: RawPlayerMatchStat[] = [];
+  let totalMinutes = 0;
+  const mapIds = new Set<number>();
+
+  for (const match of matchRows) {
+    let playerStats: RawPlayerMatchStat[] = [];
+    try {
+      const decoded = JSON.parse(match.player_stats_json ?? "[]") as unknown[];
+      if (Array.isArray(decoded)) {
+        playerStats = decoded
+          .map(normalizeRawPlayerStat)
+          .filter((entry): entry is RawPlayerMatchStat => entry !== null)
+          .filter((stat) => stat.login.trim().toLowerCase() === login);
+      }
+    } catch {
+      playerStats = [];
+    }
+
+    if (playerStats.length === 0) {
+      const bluePlayers = JSON.parse(match.blue_players || "[]") as string[];
+      const redPlayers = JSON.parse(match.red_players || "[]") as string[];
+      if (
+        bluePlayers.some((p) => p.trim().toLowerCase() === login) ||
+        redPlayers.some((p) => p.trim().toLowerCase() === login)
+      ) {
+        totalMinutes += match.duration_seconds / 60;
+        mapIds.add(match.id);
+      }
+    } else {
+      totalStats.push(...playerStats);
+      totalMinutes += match.duration_seconds / 60;
+      mapIds.add(match.id);
+    }
+  }
+
+  if (totalStats.length === 0 && mapIds.size === 0) {
+    return void res.status(404).json({ error: "Player not found" });
+  }
+
+  const aggregated = {
+    login,
+    matchesPlayed: mapIds.size,
+    totalMinutes: Math.round(totalMinutes * 10) / 10,
+    stats: {
+      points: 0,
+      damage: 0,
+      ballHits: 0,
+      kills: 0,
+      deaths: 0,
+      kdRatio: 0,
+      accuracy: 0,
+      shots: 0,
+      passes: 0,
+      catches: 0,
+      backstabs: 0,
+      backspaced: 0,
+      ballGivenAway: 0,
+      ballStolen: 0,
+      ballPossession: 0,
+      nearMisses: 0,
+      captureTries: 0,
+      caps: 0,
+      capPercent: 0,
+      capSec: 0,
+    },
+  };
+
+  for (const stat of totalStats) {
+    aggregated.stats.points += toNumber(stat.points);
+    aggregated.stats.damage += toNumber(stat.damage);
+    aggregated.stats.ballHits += toNumber(stat.ballHits);
+    aggregated.stats.kills += toNumber(stat.kills);
+    aggregated.stats.deaths += toNumber(stat.deaths);
+    aggregated.stats.kdRatio += toNumber(stat.kdRatio);
+    aggregated.stats.accuracy += toNumber(stat.accuracy);
+    aggregated.stats.shots += toNumber(stat.shots);
+    aggregated.stats.passes += toNumber(stat.passes);
+    aggregated.stats.catches += toNumber(stat.catches);
+    aggregated.stats.backstabs += toNumber(stat.backstabs);
+    aggregated.stats.backspaced += toNumber(stat.backspaced);
+    aggregated.stats.ballGivenAway += toNumber(stat.ballGivenAway);
+    aggregated.stats.ballStolen += toNumber(stat.ballStolen);
+    aggregated.stats.ballPossession += toNumber(stat.ballPossession);
+    aggregated.stats.nearMisses += toNumber(stat.nearMisses);
+    aggregated.stats.captureTries += toNumber(stat.captureTries);
+    aggregated.stats.caps += toNumber(stat.caps);
+    aggregated.stats.capPercent += toNumber(stat.capPercent);
+    aggregated.stats.capSec += toNumber(stat.capSec);
+  }
+
+  const c = Math.max(totalStats.length, 1);
+  res.json({
+    ...aggregated,
+    stats: {
+      points: Math.round((aggregated.stats.points / c) * 10) / 10,
+      damage: Math.round((aggregated.stats.damage / c) * 10) / 10,
+      ballHits: Math.round((aggregated.stats.ballHits / c) * 10) / 10,
+      kills: Math.round((aggregated.stats.kills / c) * 10) / 10,
+      deaths: Math.round((aggregated.stats.deaths / c) * 10) / 10,
+      kdRatio: Math.round((aggregated.stats.kdRatio / c) * 100) / 100,
+      accuracy: Math.round((aggregated.stats.accuracy / c) * 100) / 100,
+      shots: Math.round((aggregated.stats.shots / c) * 10) / 10,
+      passes: Math.round((aggregated.stats.passes / c) * 10) / 10,
+      catches: Math.round((aggregated.stats.catches / c) * 10) / 10,
+      backstabs: Math.round((aggregated.stats.backstabs / c) * 10) / 10,
+      backspaced: Math.round((aggregated.stats.backspaced / c) * 10) / 10,
+      ballGivenAway: Math.round((aggregated.stats.ballGivenAway / c) * 10) / 10,
+      ballStolen: Math.round((aggregated.stats.ballStolen / c) * 10) / 10,
+      ballPossession:
+        Math.round((aggregated.stats.ballPossession / c) * 10) / 10,
+      nearMisses: Math.round((aggregated.stats.nearMisses / c) * 10) / 10,
+      captureTries: Math.round((aggregated.stats.captureTries / c) * 10) / 10,
+      caps: Math.round((aggregated.stats.caps / c) * 10) / 10,
+      capPercent: Math.round((aggregated.stats.capPercent / c) * 100) / 100,
+      capSec: Math.round((aggregated.stats.capSec / c) * 100) / 100,
+    },
+  });
 });
 
 app.listen(PORT, () => {
