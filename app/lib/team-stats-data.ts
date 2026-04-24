@@ -11,6 +11,7 @@ export { fetchTeams, fetchTeamById } from "./api-client";
 export function getCompetitionTypeLabel(type: string): string {
   if (type === "sbl") return "SBL";
   if (type === "sbc") return "SBC";
+  if (type === "funcup") return "FunCup";
   return "TeamCup";
 }
 

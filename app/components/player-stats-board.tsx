@@ -2,30 +2,58 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  fetchPlayerStats,
-  fetchTournamentEditions,
-  PlayerStatsRow,
+  fetchPlayerStatsRaw,
+  fetchTournaments,
+  PlayerMatchStatsRaw,
+  Tournament,
   TournamentFilterType,
   TournamentType,
 } from "@/app/lib/api-client";
 
-type PlayerStats = PlayerStatsRow;
+type TournamentSelection = "all" | number;
 
-const columns: Array<{ label: string; key: keyof PlayerStats }> = [
+type PlayerStatsAggregated = {
+  login: string;
+  nickname: string;
+  points: number;
+  damage: number;
+  ballHits: number;
+  kills: number;
+  deaths: number;
+  kdRatio: number;
+  accuracy: number;
+  shots: number;
+  passes: number;
+  catches: number;
+  backstabs: number;
+  backspaced: number;
+  ballGivenAway: number;
+  ballStolen: number;
+  ballPossession: number;
+  nearMisses: number;
+  captureTries: number;
+  caps: number;
+  capPercent: number;
+  capSec: number;
+  team: string;
+  matchesPlayed: number;
+};
+
+const tournamentTypes: TournamentType[] = ["sbl", "sbc", "funcup", "teamcup"];
+
+const columns: Array<{ label: string; key: keyof PlayerStatsAggregated }> = [
   { label: "Login", key: "login" },
   { label: "Nickname", key: "nickname" },
-  { label: "Rank", key: "rank" },
-  { label: "Ladder Points", key: "ladderPoints" },
   { label: "Points", key: "points" },
   { label: "Damage", key: "damage" },
-  { label: "Shots", key: "shots" },
+  { label: "Ball Hits", key: "ballHits" },
   { label: "Kills", key: "kills" },
   { label: "Deaths", key: "deaths" },
   { label: "Kd Ratio", key: "kdRatio" },
   { label: "Accuracy", key: "accuracy" },
-  { label: "Passes Done", key: "passesDone" },
-  { label: "Passes Received", key: "passesReceived" },
-  { label: "Ball Hits", key: "ballHits" },
+  { label: "Shots", key: "shots" },
+  { label: "Passes", key: "passes" },
+  { label: "Catches", key: "catches" },
   { label: "Backstabs", key: "backstabs" },
   { label: "Backspaced", key: "backspaced" },
   { label: "Ball Given Away", key: "ballGivenAway" },
@@ -33,32 +61,31 @@ const columns: Array<{ label: string; key: keyof PlayerStats }> = [
   { label: "Ball Possession", key: "ballPossession" },
   { label: "Near Misses", key: "nearMisses" },
   { label: "Capture Tries", key: "captureTries" },
-  { label: "Captures", key: "captures" },
-  { label: "Capture Total Percent", key: "captureTotalPercent" },
-  { label: "Capture Total Time", key: "captureTotalTime" },
-  { label: "Playtime", key: "playtime" },
-  { label: "Maps Played", key: "mapsPlayed" },
-  { label: "Won Map", key: "wonMap" },
+  { label: "Caps", key: "caps" },
+  { label: "Cap %", key: "capPercent" },
+  { label: "Cap Sec", key: "capSec" },
+  { label: "Team", key: "team" },
+  { label: "Matches", key: "matchesPlayed" },
 ];
 
-const defaultVisibleKeys: Array<keyof PlayerStats> = [
+const defaultVisibleKeys: Array<keyof PlayerStatsAggregated> = [
   "login",
   "nickname",
-  "rank",
-  "ladderPoints",
   "points",
   "damage",
-  "shots",
+  "ballHits",
   "kills",
   "deaths",
   "kdRatio",
   "accuracy",
-  "passesDone",
-  "passesReceived",
-  "ballHits",
+  "shots",
+  "passes",
+  "catches",
+  "caps",
+  "capPercent",
+  "team",
+  "matchesPlayed",
 ];
-
-const tournamentTypes: TournamentType[] = ["sbl", "sbc", "funcup", "teamcup"];
 
 function formatTournamentType(type: TournamentFilterType): string {
   if (type === "sbl") return "SBL";
@@ -69,56 +96,196 @@ function formatTournamentType(type: TournamentFilterType): string {
   return "All";
 }
 
+function toNumber(value: unknown): number {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function round(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function formatCellValue(
+  key: keyof PlayerStatsAggregated,
+  value: PlayerStatsAggregated[keyof PlayerStatsAggregated],
+): string {
+  if (typeof value === "string") return value;
+  if (key === "kdRatio" || key === "accuracy" || key === "capPercent") {
+    return value.toFixed(2);
+  }
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
 export default function PlayerStatsBoard() {
-  const [rows, setRows] = useState<PlayerStats[]>([]);
+  const [rawRows, setRawRows] = useState<PlayerMatchStatsRaw[]>([]);
   const [visibleKeys, setVisibleKeys] =
-    useState<Array<keyof PlayerStats>>(defaultVisibleKeys);
-  const [sortKey, setSortKey] = useState<keyof PlayerStats>("points");
+    useState<Array<keyof PlayerStatsAggregated>>(defaultVisibleKeys);
+  const [sortKey, setSortKey] =
+    useState<keyof PlayerStatsAggregated>("points");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const [typeFilter, setTypeFilter] = useState<TournamentFilterType>("all");
-  const [editionOptions, setEditionOptions] = useState<number[]>([]);
-  const [editionFilter, setEditionFilter] = useState<number | null>(null);
+  const [tournamentFilter, setTournamentFilter] =
+    useState<TournamentSelection>("all");
+  const [tournamentOptions, setTournamentOptions] = useState<Tournament[]>([]);
 
   useEffect(() => {
-    const showEdition = tournamentTypes.includes(typeFilter as TournamentType);
-    if (!showEdition) {
-      setEditionOptions([]);
-      setEditionFilter(null);
+    fetchPlayerStatsRaw({ type: "all" })
+      .then(setRawRows)
+      .catch((error) => {
+        console.error(error);
+        setRawRows([]);
+      });
+  }, []);
+
+  useEffect(() => {
+    const showTournamentDropdown = tournamentTypes.includes(
+      typeFilter as TournamentType,
+    );
+
+    setTournamentFilter("all");
+    if (!showTournamentDropdown) {
+      setTournamentOptions([]);
       return;
     }
 
-    fetchTournamentEditions(typeFilter as TournamentType)
-      .then((editions) => {
-        setEditionOptions(editions);
-        setEditionFilter((current) => {
-          if (current && editions.includes(current)) return current;
-          return editions[0] ?? null;
-        });
+    fetchTournaments({ type: typeFilter as TournamentType })
+      .then((rows) => {
+        const unique = Array.from(
+          new Map(rows.map((row) => [row.id, row])).values(),
+        );
+        setTournamentOptions(unique);
       })
       .catch((error) => {
         console.error(error);
-        setEditionOptions([]);
-        setEditionFilter(null);
+        setTournamentOptions([]);
       });
   }, [typeFilter]);
 
-  useEffect(() => {
-    const showEdition = tournamentTypes.includes(typeFilter as TournamentType);
-    const effectiveEdition = showEdition ? editionFilter : null;
+  const filteredRawRows = useMemo(() => {
+    let rows = rawRows;
 
-    if (showEdition && effectiveEdition === null) {
-      setRows([]);
-      return;
+    if (typeFilter === "public") {
+      rows = rows.filter(
+        (row) => !row.tournament_id || row.tournament_type === "public",
+      );
+    } else if (typeFilter !== "all") {
+      rows = rows.filter((row) => row.tournament_type === typeFilter);
     }
 
-    fetchPlayerStats({ type: typeFilter, edition: effectiveEdition })
-      .then(setRows)
-      .catch((error) => {
-        console.error(error);
-        setRows([]);
+    if (tournamentFilter !== "all") {
+      rows = rows.filter((row) => row.tournament_id === tournamentFilter);
+    }
+
+    return rows;
+  }, [rawRows, typeFilter, tournamentFilter]);
+
+  const aggregatedRows = useMemo(() => {
+    const byPlayer = new Map<
+      string,
+      {
+        count: number;
+        login: string;
+        nickname: string;
+        team: string;
+        sums: Omit<
+          PlayerStatsAggregated,
+          "login" | "nickname" | "team" | "matchesPlayed"
+        >;
+      }
+    >();
+
+    for (const row of filteredRawRows) {
+      const key = row.login.trim().toLowerCase();
+      if (!key) continue;
+
+      const current = byPlayer.get(key) ?? {
+        count: 0,
+        login: row.login,
+        nickname: row.nickname?.trim() || row.login,
+        team: row.team?.trim() || "-",
+        sums: {
+          points: 0,
+          damage: 0,
+          ballHits: 0,
+          kills: 0,
+          deaths: 0,
+          kdRatio: 0,
+          accuracy: 0,
+          shots: 0,
+          passes: 0,
+          catches: 0,
+          backstabs: 0,
+          backspaced: 0,
+          ballGivenAway: 0,
+          ballStolen: 0,
+          ballPossession: 0,
+          nearMisses: 0,
+          captureTries: 0,
+          caps: 0,
+          capPercent: 0,
+          capSec: 0,
+        },
+      };
+
+      current.count += 1;
+      current.sums.points += toNumber(row.points);
+      current.sums.damage += toNumber(row.damage);
+      current.sums.ballHits += toNumber(row.ballHits);
+      current.sums.kills += toNumber(row.kills);
+      current.sums.deaths += toNumber(row.deaths);
+      current.sums.kdRatio += toNumber(row.kdRatio);
+      current.sums.accuracy += toNumber(row.accuracy);
+      current.sums.shots += toNumber(row.shots);
+      current.sums.passes += toNumber(row.passes);
+      current.sums.catches += toNumber(row.catches);
+      current.sums.backstabs += toNumber(row.backstabs);
+      current.sums.backspaced += toNumber(row.backspaced);
+      current.sums.ballGivenAway += toNumber(row.ballGivenAway);
+      current.sums.ballStolen += toNumber(row.ballStolen);
+      current.sums.ballPossession += toNumber(row.ballPossession);
+      current.sums.nearMisses += toNumber(row.nearMisses);
+      current.sums.captureTries += toNumber(row.captureTries);
+      current.sums.caps += toNumber(row.caps);
+      current.sums.capPercent += toNumber(row.capPercent);
+      current.sums.capSec += toNumber(row.capSec);
+
+      byPlayer.set(key, current);
+    }
+
+    const rows: PlayerStatsAggregated[] = [];
+    for (const player of byPlayer.values()) {
+      const c = Math.max(player.count, 1);
+      rows.push({
+        login: player.login,
+        nickname: player.nickname,
+        team: player.team,
+        points: round(player.sums.points / c),
+        damage: round(player.sums.damage / c),
+        ballHits: round(player.sums.ballHits / c),
+        kills: round(player.sums.kills / c),
+        deaths: round(player.sums.deaths / c),
+        kdRatio: round(player.sums.kdRatio / c),
+        accuracy: round(player.sums.accuracy / c),
+        shots: round(player.sums.shots / c),
+        passes: round(player.sums.passes / c),
+        catches: round(player.sums.catches / c),
+        backstabs: round(player.sums.backstabs / c),
+        backspaced: round(player.sums.backspaced / c),
+        ballGivenAway: round(player.sums.ballGivenAway / c),
+        ballStolen: round(player.sums.ballStolen / c),
+        ballPossession: round(player.sums.ballPossession / c),
+        nearMisses: round(player.sums.nearMisses / c),
+        captureTries: round(player.sums.captureTries / c),
+        caps: round(player.sums.caps / c),
+        capPercent: round(player.sums.capPercent / c),
+        capSec: round(player.sums.capSec / c),
+        matchesPlayed: player.count,
       });
-  }, [typeFilter, editionFilter]);
+    }
+
+    return rows;
+  }, [filteredRawRows]);
 
   const visibleColumns = useMemo(
     () => columns.filter((column) => visibleKeys.includes(column.key)),
@@ -126,7 +293,7 @@ export default function PlayerStatsBoard() {
   );
 
   const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => {
+    return [...aggregatedRows].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
       const cmp =
@@ -135,14 +302,14 @@ export default function PlayerStatsBoard() {
           : String(av).localeCompare(String(bv));
       return sortDir === "desc" ? -cmp : cmp;
     });
-  }, [rows, sortKey, sortDir]);
+  }, [aggregatedRows, sortKey, sortDir]);
 
   const useHorizontalScroll = visibleColumns.length > defaultVisibleKeys.length;
-  const showEditionFilter = tournamentTypes.includes(
+  const showTournamentDropdown = tournamentTypes.includes(
     typeFilter as TournamentType,
   );
 
-  function handleSort(key: keyof PlayerStats) {
+  function handleSort(key: keyof PlayerStatsAggregated) {
     if (key === sortKey) {
       setSortDir((currentDir) => (currentDir === "desc" ? "asc" : "desc"));
     } else {
@@ -151,7 +318,7 @@ export default function PlayerStatsBoard() {
     }
   }
 
-  function toggleColumn(key: keyof PlayerStats) {
+  function toggleColumn(key: keyof PlayerStatsAggregated) {
     setVisibleKeys((current) => {
       if (current.includes(key)) {
         if (current.length === 1) return current;
@@ -184,22 +351,24 @@ export default function PlayerStatsBoard() {
             <option value="teamcup">Teamcup</option>
           </select>
 
-          {showEditionFilter && (
+          {showTournamentDropdown && (
             <select
-              value={editionFilter ?? ""}
-              onChange={(e) => setEditionFilter(Number(e.target.value))}
+              value={
+                tournamentFilter === "all" ? "all" : String(tournamentFilter)
+              }
+              onChange={(e) =>
+                setTournamentFilter(
+                  e.target.value === "all" ? "all" : Number(e.target.value),
+                )
+              }
               className="rounded-full border border-cyan-300/30 bg-slate-950/70 px-3 py-1 text-xs font-medium text-cyan-200 transition hover:border-cyan-200"
-              disabled={editionOptions.length === 0}
             >
-              {editionOptions.length === 0 ? (
-                <option value="">No editions</option>
-              ) : (
-                editionOptions.map((num) => (
-                  <option key={num} value={num}>
-                    {formatTournamentType(typeFilter)} #{num}
-                  </option>
-                ))
-              )}
+              <option value="all">All {formatTournamentType(typeFilter)}</option>
+              {tournamentOptions.map((tournament) => (
+                <option key={tournament.id} value={tournament.id}>
+                  {formatTournamentType(tournament.type)} #{tournament.edition}
+                </option>
+              ))}
             </select>
           )}
         </div>
@@ -273,7 +442,7 @@ export default function PlayerStatsBoard() {
                     key={column.key}
                     className="px-3 py-2 text-sm text-slate-100 whitespace-nowrap"
                   >
-                    {String(player[column.key])}
+                    {formatCellValue(column.key, player[column.key])}
                   </td>
                 ))}
               </tr>

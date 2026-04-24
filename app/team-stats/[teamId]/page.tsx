@@ -42,10 +42,6 @@ export default function TeamCompetitionsPage() {
       ? team.competitions
       : team.competitions.filter((c) => c.type === filterType);
 
-  const tournamentOptions = Array.from(
-    new Set(tournaments.map((t) => t.name.trim()).filter(Boolean)),
-  );
-
   return (
     <div className="mx-auto flex flex-1 min-h-0 w-full max-w-[98vw] flex-col px-2 py-3 sm:px-4">
       <section className="flex flex-1 min-h-0 flex-col rounded-2xl border border-cyan-400/20 bg-slate-900/70 p-4 sm:p-6">
@@ -66,6 +62,7 @@ export default function TeamCompetitionsPage() {
               <option value="all">All</option>
               <option value="sbl">SBL</option>
               <option value="sbc">SBC</option>
+              <option value="funcup">FunCup</option>
               <option value="teamcup">TeamCup</option>
             </select>
           </label>
@@ -81,17 +78,17 @@ export default function TeamCompetitionsPage() {
             <input type="hidden" name="teamId" value={team.id} />
 
             <select
-              name="tournament"
+              name="tournamentId"
               required
-              defaultValue={tournamentOptions[0] ?? ""}
+              defaultValue={String(tournaments[0]?.id ?? "")}
               className="rounded-lg border border-white/20 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-300"
             >
-              {tournamentOptions.length === 0 ? (
+              {tournaments.length === 0 ? (
                 <option value="">No tournament available</option>
               ) : (
-                tournamentOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+                tournaments.map((option) => (
+                  <option key={option.id} value={String(option.id)}>
+                    {option.name}
                   </option>
                 ))
               )}
@@ -99,7 +96,7 @@ export default function TeamCompetitionsPage() {
 
             <button
               type="submit"
-              disabled={tournamentOptions.length === 0}
+              disabled={tournaments.length === 0}
               className="rounded-lg border border-amber-300/60 bg-amber-500/20 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:border-amber-200 hover:bg-amber-500/30"
             >
               Add Competition

@@ -1,35 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchAllData } from "@/app/lib/api-client";
+import { fetchTournaments, Tournament } from "@/app/lib/api-client";
 
 export default function NewTeamPage() {
-  const [tournamentOptions, setTournamentOptions] = useState<string[]>([]);
+  const [tournamentOptions, setTournamentOptions] = useState<Tournament[]>([]);
 
   useEffect(() => {
-    fetchAllData()
-      .then(({ tournaments, teamStats }) => {
-        const names = new Set([
-          ...tournaments.map((t) => t.name),
-          ...teamStats.flatMap((team) =>
-            team.competitions
-              .filter((c) => c.type === "teamcup")
-              .map((c) => c.name),
-          ),
-        ]);
-        setTournamentOptions(Array.from(names));
-      })
+    fetchTournaments()
+      .then((rows) => setTournamentOptions(rows))
       .catch(console.error);
   }, []);
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-[98vw] flex-col px-2 py-4 sm:px-4">
       <section className="mx-auto w-full max-w-2xl rounded-2xl border border-amber-400/20 bg-slate-900/70 p-6">
-        <h1 className="mb-2 text-xl font-semibold text-white">
-          Add Team to Tournament
-        </h1>
+        <h1 className="mb-2 text-xl font-semibold text-white">Add Team</h1>
         <p className="mb-6 text-sm text-slate-300">
-          Renseigne les infos de l'equipe et les 3 logins des membres.
+          Renseigne les infos de l'equipe. Le tournoi est facultatif.
         </p>
 
         <form
@@ -43,17 +31,18 @@ export default function NewTeamPage() {
               className="mb-1 block text-sm text-slate-300"
               htmlFor="team-tournament"
             >
-              Tournament
+              Tournament (optional)
             </label>
             <select
               id="team-tournament"
               name="tournament"
               className="w-full rounded-lg border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-300"
-              defaultValue={tournamentOptions[0]}
+              defaultValue=""
             >
+              <option value="">No tournament (public team)</option>
               {tournamentOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
+                <option key={option.id} value={option.name}>
+                  {option.name}
                 </option>
               ))}
             </select>

@@ -58,6 +58,78 @@ function parseEdition(value: unknown): number | null {
   return parsed;
 }
 
+type RawPlayerMatchStat = {
+  login: string;
+  nickname?: string;
+  team?: string;
+  points?: number;
+  damage?: number;
+  ballHits?: number;
+  kills?: number;
+  deaths?: number;
+  kdRatio?: number;
+  accuracy?: number;
+  shots?: number;
+  passes?: number;
+  catches?: number;
+  backstabs?: number;
+  backspaced?: number;
+  ballGivenAway?: number;
+  ballStolen?: number;
+  ballPossession?: number;
+  nearMisses?: number;
+  captureTries?: number;
+  caps?: number;
+  capPercent?: number;
+  capSec?: number;
+};
+
+function toNumber(value: unknown, fallback = 0): number {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function normalizeRawPlayerStat(value: unknown): RawPlayerMatchStat | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  const login = String(candidate.login ?? "").trim();
+  if (!login) return null;
+
+  const kills = toNumber(candidate.kills);
+  const deaths = toNumber(candidate.deaths);
+
+  return {
+    login,
+    nickname: String(candidate.nickname ?? "").trim() || undefined,
+    team: String(candidate.team ?? "").trim() || undefined,
+    points: toNumber(candidate.points),
+    damage: toNumber(candidate.damage),
+    ballHits: toNumber(candidate.ballHits),
+    kills,
+    deaths,
+    kdRatio:
+      candidate.kdRatio !== undefined
+        ? toNumber(candidate.kdRatio)
+        : deaths > 0
+          ? kills / deaths
+          : kills,
+    accuracy: toNumber(candidate.accuracy),
+    shots: toNumber(candidate.shots),
+    passes: toNumber(candidate.passes),
+    catches: toNumber(candidate.catches),
+    backstabs: toNumber(candidate.backstabs),
+    backspaced: toNumber(candidate.backspaced),
+    ballGivenAway: toNumber(candidate.ballGivenAway),
+    ballStolen: toNumber(candidate.ballStolen),
+    ballPossession: toNumber(candidate.ballPossession),
+    nearMisses: toNumber(candidate.nearMisses),
+    captureTries: toNumber(candidate.captureTries),
+    caps: toNumber(candidate.caps),
+    capPercent: toNumber(candidate.capPercent),
+    capSec: toNumber(candidate.capSec),
+  };
+}
+
 function buildMatchFilterClause(
   type: TournamentFilterType,
   edition: number | null,
@@ -163,11 +235,9 @@ app.post("/api/tournaments/CreateOne", (req: Request, res: Response) => {
 
   const normalizedType = type.trim().toLowerCase();
   if (!isTournamentType(normalizedType)) {
-    return void res
-      .status(400)
-      .json({
-        error: "Invalid type. Allowed values: sbl, sbc, funcup, teamcup",
-      });
+    return void res.status(400).json({
+      error: "Invalid type. Allowed values: sbl, sbc, funcup, teamcup",
+    });
   }
 
   if (!Number.isInteger(edition) || (edition ?? 0) <= 0) {
@@ -220,11 +290,9 @@ app.put("/api/tournaments/:id", (req: Request, res: Response) => {
     Number.isInteger(edition) && (edition ?? 0) > 0 ? edition : current.edition;
 
   if (!isTournamentType(nextTypeRaw)) {
-    return void res
-      .status(400)
-      .json({
-        error: "Invalid type. Allowed values: sbl, sbc, funcup, teamcup",
-      });
+    return void res.status(400).json({
+      error: "Invalid type. Allowed values: sbl, sbc, funcup, teamcup",
+    });
   }
 
   db.prepare(
@@ -337,6 +405,7 @@ app.post(
       duration_seconds,
       blue_players,
       red_players,
+      player_stats,
       home_score,
       away_score,
       played_at,
@@ -347,6 +416,7 @@ app.post(
       duration_seconds?: number;
       blue_players?: string[];
       red_players?: string[];
+      player_stats?: RawPlayerMatchStat[];
       home_score?: number;
       away_score?: number;
       played_at?: string;
@@ -410,10 +480,11 @@ app.post(
           duration_seconds,
           blue_players,
           red_players,
+          player_stats_json,
           home_score,
           away_score,
           played_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
       )
       .run(
         tournamentId,
@@ -423,6 +494,7 @@ app.post(
         duration_seconds ?? 0,
         JSON.stringify(Array.isArray(blue_players) ? blue_players : []),
         JSON.stringify(Array.isArray(red_players) ? red_players : []),
+        JSON.stringify(Array.isArray(player_stats) ? player_stats : []),
         hScore,
         aScore,
         played_at ?? null,
@@ -472,6 +544,7 @@ app.post("/api/matches/CreateOne", (req: Request, res: Response) => {
     duration_seconds,
     blue_players,
     red_players,
+    player_stats,
     home_score,
     away_score,
     played_at,
@@ -483,6 +556,7 @@ app.post("/api/matches/CreateOne", (req: Request, res: Response) => {
     duration_seconds?: number;
     blue_players?: string[];
     red_players?: string[];
+    player_stats?: RawPlayerMatchStat[];
     home_score?: number;
     away_score?: number;
     played_at?: string;
@@ -563,10 +637,11 @@ app.post("/api/matches/CreateOne", (req: Request, res: Response) => {
         duration_seconds,
         blue_players,
         red_players,
+        player_stats_json,
         home_score,
         away_score,
         played_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
     )
     .run(
       tournament_id ?? null,
@@ -576,6 +651,7 @@ app.post("/api/matches/CreateOne", (req: Request, res: Response) => {
       duration_seconds ?? 0,
       JSON.stringify(Array.isArray(blue_players) ? blue_players : []),
       JSON.stringify(Array.isArray(red_players) ? red_players : []),
+      JSON.stringify(Array.isArray(player_stats) ? player_stats : []),
       hScore,
       aScore,
       played_at ?? null,
@@ -803,6 +879,97 @@ app.post("/api/teams/CreateOne", (req: Request, res: Response) => {
   res.status(201).json(row);
 });
 
+app.get("/api/teams/:id/competitions", (req: Request, res: Response) => {
+  const teamId = toId(req.params.id);
+  if (!teamId) return void res.status(400).json({ error: "Invalid team id" });
+
+  const teamExists = db
+    .prepare("SELECT id FROM teams WHERE id = ?")
+    .get(teamId) as { id: number } | undefined;
+  if (!teamExists)
+    return void res.status(404).json({ error: "Team not found" });
+
+  const rows = db
+    .prepare(
+      `SELECT t.id, t.name, t.type, t.edition
+       FROM team_competitions tc
+       INNER JOIN tournaments t ON t.id = tc.tournament_id
+       WHERE tc.team_id = ?
+       ORDER BY t.date DESC, t.id DESC`,
+    )
+    .all(teamId) as Array<{
+    id: number;
+    name: string;
+    type: TournamentType;
+    edition: number;
+  }>;
+
+  res.json(rows);
+});
+
+app.post("/api/teams/:id/competitions", (req: Request, res: Response) => {
+  const teamId = toId(req.params.id);
+  if (!teamId) return void res.status(400).json({ error: "Invalid team id" });
+
+  const teamExists = db
+    .prepare("SELECT id FROM teams WHERE id = ?")
+    .get(teamId) as { id: number } | undefined;
+  if (!teamExists)
+    return void res.status(404).json({ error: "Team not found" });
+
+  const { tournamentId, competitionName } = req.body as {
+    tournamentId?: number | string;
+    competitionName?: string;
+  };
+
+  let resolvedTournamentId: number | null = null;
+  if (typeof tournamentId === "number" && Number.isInteger(tournamentId)) {
+    resolvedTournamentId = tournamentId > 0 ? tournamentId : null;
+  } else if (typeof tournamentId === "string") {
+    resolvedTournamentId = toId(tournamentId);
+  }
+
+  if (!resolvedTournamentId && typeof competitionName === "string") {
+    const normalizedName = competitionName.trim();
+    if (normalizedName) {
+      const found = db
+        .prepare(
+          "SELECT id FROM tournaments WHERE name = ? ORDER BY id DESC LIMIT 1",
+        )
+        .get(normalizedName) as { id: number } | undefined;
+      resolvedTournamentId = found?.id ?? null;
+    }
+  }
+
+  if (!resolvedTournamentId) {
+    return void res.status(400).json({
+      error: "tournamentId (or competitionName) is required",
+    });
+  }
+
+  const tournament = db
+    .prepare("SELECT id, name, type, edition FROM tournaments WHERE id = ?")
+    .get(resolvedTournamentId) as
+    | {
+        id: number;
+        name: string;
+        type: TournamentType;
+        edition: number;
+      }
+    | undefined;
+
+  if (!tournament) {
+    return void res.status(404).json({ error: "Tournament not found" });
+  }
+
+  db.prepare(
+    `INSERT OR IGNORE INTO team_competitions (team_id, tournament_id)
+     VALUES (?, ?)`,
+  ).run(teamId, tournament.id);
+
+  res.status(201).json(tournament);
+});
+
 // Maps
 app.get("/api/maps/GetAll", (_req: Request, res: Response) => {
   const rows = db
@@ -823,15 +990,141 @@ app.get("/api/maps/GetOne/:id", (req: Request, res: Response) => {
   res.json(row);
 });
 
+app.get("/api/player-stats/GetRaw", (req: Request, res: Response) => {
+  const { value: typeFilter, valid } = parseTournamentFilter(req.query.type);
+  if (!valid) {
+    return void res.status(400).json({
+      error:
+        "Invalid type. Allowed values: all, public, sbl, sbc, funcup, teamcup",
+    });
+  }
+
+  const tournamentId =
+    typeof req.query.tournamentId === "string"
+      ? toId(req.query.tournamentId)
+      : null;
+
+  if (req.query.tournamentId !== undefined && !tournamentId) {
+    return void res.status(400).json({ error: "Invalid tournamentId" });
+  }
+
+  if (typeFilter === "public" && tournamentId) {
+    return void res
+      .status(400)
+      .json({ error: "tournamentId is not allowed when type=public" });
+  }
+
+  const where: string[] = [];
+  const params: Array<string | number> = [];
+
+  if (tournamentId) {
+    where.push("m.tournament_id = ?");
+    params.push(tournamentId);
+  } else if (typeFilter === "public") {
+    where.push("m.tournament_id IS NULL");
+  } else if (typeFilter !== "all") {
+    where.push("m.tournament_id IS NOT NULL");
+    where.push("t.type = ?");
+    params.push(typeFilter);
+  }
+
+  const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  const rows = db
+    .prepare(
+      `SELECT
+         m.id AS match_id,
+         m.tournament_id,
+         m.blue_players,
+         m.red_players,
+         m.player_stats_json,
+         t.name AS tournament_name,
+         t.type AS tournament_type,
+         t.edition AS tournament_edition
+       FROM matches m
+       LEFT JOIN tournaments t ON t.id = m.tournament_id
+       ${whereClause}
+       ORDER BY m.played_at DESC, m.id DESC`,
+    )
+    .all(...params) as Array<{
+    match_id: number;
+    tournament_id: number | null;
+    blue_players: string;
+    red_players: string;
+    player_stats_json?: string;
+    tournament_name: string | null;
+    tournament_type: TournamentType | null;
+    tournament_edition: number | null;
+  }>;
+
+  const payload: Array<
+    RawPlayerMatchStat & {
+      match_id: number;
+      tournament_id: number | null;
+      tournament_name: string | null;
+      tournament_type: TournamentType | "public" | null;
+      tournament_edition: number | null;
+    }
+  > = [];
+
+  for (const row of rows) {
+    let parsedStats: RawPlayerMatchStat[] = [];
+    try {
+      const decoded = JSON.parse(row.player_stats_json ?? "[]") as unknown[];
+      if (Array.isArray(decoded)) {
+        parsedStats = decoded
+          .map(normalizeRawPlayerStat)
+          .filter((entry): entry is RawPlayerMatchStat => entry !== null);
+      }
+    } catch {
+      parsedStats = [];
+    }
+
+    if (parsedStats.length === 0) {
+      const bluePlayers = JSON.parse(row.blue_players || "[]") as string[];
+      const redPlayers = JSON.parse(row.red_players || "[]") as string[];
+      const fallback = [
+        ...bluePlayers.map((login) => ({ login, team: "blue" })),
+        ...redPlayers.map((login) => ({ login, team: "red" })),
+      ];
+
+      for (const item of fallback) {
+        const normalized = normalizeRawPlayerStat(item);
+        if (!normalized) continue;
+        payload.push({
+          ...normalized,
+          match_id: row.match_id,
+          tournament_id: row.tournament_id,
+          tournament_name: row.tournament_name,
+          tournament_type: row.tournament_type ?? "public",
+          tournament_edition: row.tournament_edition,
+        });
+      }
+      continue;
+    }
+
+    for (const stat of parsedStats) {
+      payload.push({
+        ...stat,
+        match_id: row.match_id,
+        tournament_id: row.tournament_id,
+        tournament_name: row.tournament_name,
+        tournament_type: row.tournament_type ?? "public",
+        tournament_edition: row.tournament_edition,
+      });
+    }
+  }
+
+  res.json(payload);
+});
+
 app.get("/api/player-stats/GetAll", (req: Request, res: Response) => {
   const { value: typeFilter, valid } = parseTournamentFilter(req.query.type);
   if (!valid) {
-    return void res
-      .status(400)
-      .json({
-        error:
-          "Invalid type. Allowed values: all, public, sbl, sbc, funcup, teamcup",
-      });
+    return void res.status(400).json({
+      error:
+        "Invalid type. Allowed values: all, public, sbl, sbc, funcup, teamcup",
+    });
   }
 
   const editionFilter = parseEdition(req.query.edition);
@@ -936,12 +1229,10 @@ app.get("/api/player-stats/GetAll", (req: Request, res: Response) => {
 app.get("/api/maps-stats/GetAll", (req: Request, res: Response) => {
   const { value: typeFilter, valid } = parseTournamentFilter(req.query.type);
   if (!valid) {
-    return void res
-      .status(400)
-      .json({
-        error:
-          "Invalid type. Allowed values: all, public, sbl, sbc, funcup, teamcup",
-      });
+    return void res.status(400).json({
+      error:
+        "Invalid type. Allowed values: all, public, sbl, sbc, funcup, teamcup",
+    });
   }
 
   const editionFilter = parseEdition(req.query.edition);

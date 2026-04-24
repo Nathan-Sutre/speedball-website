@@ -48,3 +48,5 @@ backend/*.db-shm
 backend/*.db-wal
 
 package-lock.json
+
+public/

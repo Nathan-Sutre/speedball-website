@@ -11,7 +11,7 @@ export const API_BASE =
     : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 
 // ─── Types (re-exported from lib files) ────────────────────────────────────
-export type CompetitionType = "sbl" | "sbc" | "teamcup";
+export type CompetitionType = "sbl" | "sbc" | "funcup" | "teamcup";
 export type TournamentType = "sbl" | "sbc" | "funcup" | "teamcup";
 export type TournamentFilterType = TournamentType | "public" | "all";
 
@@ -108,6 +108,37 @@ export type PlayerStatsRow = {
   wonMap: number;
 };
 
+export type PlayerMatchStatsRaw = {
+  match_id: number;
+  tournament_id: number | null;
+  tournament_name: string | null;
+  tournament_type: TournamentType | "public" | null;
+  tournament_edition: number | null;
+  login: string;
+  nickname?: string;
+  team?: string;
+  points?: number;
+  damage?: number;
+  ballHits?: number;
+  kills?: number;
+  deaths?: number;
+  kdRatio?: number;
+  accuracy?: number;
+  shots?: number;
+  passes?: number;
+  catches?: number;
+  backstabs?: number;
+  backspaced?: number;
+  ballGivenAway?: number;
+  ballStolen?: number;
+  ballPossession?: number;
+  nearMisses?: number;
+  captureTries?: number;
+  caps?: number;
+  capPercent?: number;
+  capSec?: number;
+};
+
 export type MapStatsRow = {
   mapId: number;
   mapName: string;
@@ -178,13 +209,11 @@ export async function fetchTournamentFullById(id: string): Promise<{
   tournament: Tournament;
   teams: TeamProfile[];
 } | null> {
-  const res = await fetch(`${API_BASE}/api/tournaments/${id}/full`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error("Failed to fetch full tournament payload");
-  return res.json() as Promise<{
-    tournament: Tournament;
-    teams: TeamProfile[];
-  }>;
+  const tournament = await fetchTournamentById(id);
+  if (!tournament) return null;
+
+  const teams = await fetchTeams();
+  return { tournament, teams };
 }
 
 export async function createTournament(body: {
@@ -248,14 +277,46 @@ export async function fetchTeams(): Promise<TeamProfile[]> {
     logo: string;
   }>;
 
-  return rows.map((row) => ({
-    id: String(row.id),
-    name: row.name,
-    color: row.color,
-    logo: row.logo,
-    players: [],
-    competitions: [],
-  }));
+  const playersRes = await fetch(`${API_BASE}/api/players/GetAll`);
+  const players = playersRes.ok
+    ? ((await playersRes.json()) as Array<{ team_id: number; login: string }>)
+    : [];
+
+  const teams = await Promise.all(
+    rows.map(async (row) => {
+      const competitionsRes = await fetch(
+        `${API_BASE}/api/teams/${row.id}/competitions`,
+      );
+
+      const linkedCompetitions = competitionsRes.ok
+        ? ((await competitionsRes.json()) as Array<{
+            id: number;
+            name: string;
+            type: CompetitionType;
+            edition: number;
+          }>)
+        : [];
+
+      return {
+        id: String(row.id),
+        name: row.name,
+        color: row.color,
+        logo: row.logo,
+        players: players
+          .filter((player) => player.team_id === row.id)
+          .map((player) => player.login),
+        competitions: linkedCompetitions.map((competition) => ({
+          id: String(competition.id),
+          name: competition.name,
+          type: competition.type,
+          matches: [],
+          mapStats: [],
+        })),
+      } satisfies TeamProfile;
+    }),
+  );
+
+  return teams;
 }
 
 export async function fetchTeamById(id: string): Promise<TeamProfile | null> {
@@ -277,13 +338,101 @@ export async function fetchTeamById(id: string): Promise<TeamProfile | null> {
       ).filter((item) => item.team_id === team.id)
     : [];
 
+  const competitionsRes = await fetch(
+    `${API_BASE}/api/teams/${team.id}/competitions`,
+  );
+  const linkedCompetitions = competitionsRes.ok
+    ? ((await competitionsRes.json()) as Array<{
+        id: number;
+        name: string;
+        type: CompetitionType;
+        edition: number;
+      }>)
+    : [];
+
+  const competitions = await Promise.all(
+    linkedCompetitions.map(async (competition) => {
+      const matchesRes = await fetch(
+        `${API_BASE}/api/matches/${competition.id}/GetAll`,
+      );
+
+      type BackendMatch = {
+        id: number;
+        home_team_id: number | null;
+        away_team_id: number | null;
+        home_score: number;
+        away_score: number;
+        map_name: string | null;
+        home_team_name: string | null;
+        away_team_name: string | null;
+      };
+
+      const backendMatches = matchesRes.ok
+        ? ((await matchesRes.json()) as BackendMatch[])
+        : [];
+
+      const teamMatches = backendMatches.filter(
+        (match) =>
+          match.home_team_id === team.id || match.away_team_id === team.id,
+      );
+
+      const matches: TeamMatch[] = teamMatches.map((match) => {
+        const isHome = match.home_team_id === team.id;
+        const scoreFor = isHome ? match.home_score : match.away_score;
+        const scoreAgainst = isHome ? match.away_score : match.home_score;
+        const opponent = isHome
+          ? (match.away_team_name ?? "Unknown")
+          : (match.home_team_name ?? "Unknown");
+
+        return {
+          id: String(match.id),
+          opponent,
+          map: match.map_name ?? "Unknown",
+          scoreFor,
+          scoreAgainst,
+          pickedByTeam: false,
+          result: scoreFor >= scoreAgainst ? "win" : "loss",
+        };
+      });
+
+      const mapStatsByName = new Map<string, TeamMapStat>();
+      for (const match of matches) {
+        const current = mapStatsByName.get(match.map) ?? {
+          mapName: match.map,
+          pickedCount: 0,
+          bannedCount: 0,
+          playedCount: 0,
+          wonCount: 0,
+          wonWhenPickedCount: 0,
+          wonWhenNotPickedCount: 0,
+        };
+
+        current.playedCount += 1;
+        if (match.result === "win") {
+          current.wonCount += 1;
+          current.wonWhenNotPickedCount += 1;
+        }
+
+        mapStatsByName.set(match.map, current);
+      }
+
+      return {
+        id: String(competition.id),
+        name: competition.name,
+        type: competition.type,
+        matches,
+        mapStats: Array.from(mapStatsByName.values()),
+      } satisfies TeamCompetition;
+    }),
+  );
+
   return {
     id: String(team.id),
     name: team.name,
     color: team.color,
     logo: team.logo,
     players: players.map((p) => p.login),
-    competitions: [],
+    competitions,
   };
 }
 
@@ -340,6 +489,34 @@ export async function addCompetitionToTeam(
   return res.json() as Promise<TeamProfile>;
 }
 
+export async function addTournamentToTeam(
+  teamId: string,
+  tournamentId: number,
+): Promise<{
+  id: number;
+  name: string;
+  type: CompetitionType;
+  edition: number;
+}> {
+  const res = await fetch(`${API_BASE}/api/teams/${teamId}/competitions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tournamentId }),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json()) as { error?: string };
+    throw new Error(err.error ?? "Failed to add team to tournament");
+  }
+
+  return res.json() as Promise<{
+    id: number;
+    name: string;
+    type: CompetitionType;
+    edition: number;
+  }>;
+}
+
 export async function deleteTeam(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/teams/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete team");
@@ -355,6 +532,23 @@ export async function fetchPlayerStats(filter?: {
   );
   if (!res.ok) throw new Error("Failed to fetch player stats");
   return res.json() as Promise<PlayerStatsRow[]>;
+}
+
+export async function fetchPlayerStatsRaw(filter?: {
+  type?: TournamentFilterType;
+  tournamentId?: number | null;
+}): Promise<PlayerMatchStatsRaw[]> {
+  const params = new URLSearchParams();
+  if (filter?.type) params.set("type", filter.type);
+  if (typeof filter?.tournamentId === "number" && filter.tournamentId > 0) {
+    params.set("tournamentId", String(filter.tournamentId));
+  }
+  const query = params.toString();
+  const res = await fetch(
+    `${API_BASE}/api/player-stats/GetRaw${query ? `?${query}` : ""}`,
+  );
+  if (!res.ok) throw new Error("Failed to fetch raw player stats");
+  return res.json() as Promise<PlayerMatchStatsRaw[]>;
 }
 
 export async function fetchMapStats(filter?: {
