@@ -123,9 +123,6 @@ export default function PlayerStatsBoard() {
     useState<Array<keyof PlayerStatsAggregated>>(defaultVisibleKeys);
   const [sortKey, setSortKey] = useState<keyof PlayerStatsAggregated>("points");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [aggregationMode, setAggregationMode] = useState<"total" | "avgMin">(
-    "total",
-  );
 
   const [typeFilter, setTypeFilter] = useState<TournamentFilterType>("all");
   const [tournamentFilter, setTournamentFilter] =
@@ -188,7 +185,6 @@ export default function PlayerStatsBoard() {
       string,
       {
         count: number;
-        totalMinutes: number;
         login: string;
         nickname: string;
         team: string;
@@ -205,7 +201,6 @@ export default function PlayerStatsBoard() {
 
       const current = byPlayer.get(key) ?? {
         count: 0,
-        totalMinutes: 0,
         login: row.login,
         nickname: row.nickname?.trim() || row.login,
         team: row.team?.trim() || "-",
@@ -234,7 +229,6 @@ export default function PlayerStatsBoard() {
       };
 
       current.count += 1;
-      current.totalMinutes += (row.duration_seconds || 0) / 60;
       current.sums.points += toNumber(row.points);
       current.sums.damage += toNumber(row.damage);
       current.sums.ballHits += toNumber(row.ballHits);
@@ -261,44 +255,37 @@ export default function PlayerStatsBoard() {
 
     const rows: PlayerStatsAggregated[] = [];
     for (const player of byPlayer.values()) {
-      const divisor =
-        aggregationMode === "avgMin"
-          ? Math.max(player.totalMinutes, 1)
-          : Math.max(player.count, 1);
-
+      const c = Math.max(player.count, 1);
       rows.push({
         login: player.login,
         nickname: player.nickname,
         team: player.team,
-        points: round(player.sums.points / divisor),
-        damage: round(player.sums.damage / divisor),
-        ballHits: round(player.sums.ballHits / divisor),
-        kills: round(player.sums.kills / divisor),
-        deaths: round(player.sums.deaths / divisor),
-        kdRatio: round(player.sums.kdRatio / divisor),
-        accuracy: round(player.sums.accuracy / divisor),
-        shots: round(player.sums.shots / divisor),
-        passes: round(player.sums.passes / divisor),
-        catches: round(player.sums.catches / divisor),
-        backstabs: round(player.sums.backstabs / divisor),
-        backspaced: round(player.sums.backspaced / divisor),
-        ballGivenAway: round(player.sums.ballGivenAway / divisor),
-        ballStolen: round(player.sums.ballStolen / divisor),
-        ballPossession: round(player.sums.ballPossession / divisor),
-        nearMisses: round(player.sums.nearMisses / divisor),
-        captureTries: round(player.sums.captureTries / divisor),
-        caps: round(player.sums.caps / divisor),
-        capPercent: round(player.sums.capPercent / divisor),
-        capSec: round(player.sums.capSec / divisor),
-        matchesPlayed:
-          aggregationMode === "avgMin"
-            ? round(player.totalMinutes)
-            : player.count,
+        points: round(player.sums.points / c),
+        damage: round(player.sums.damage / c),
+        ballHits: round(player.sums.ballHits / c),
+        kills: round(player.sums.kills / c),
+        deaths: round(player.sums.deaths / c),
+        kdRatio: round(player.sums.kdRatio / c),
+        accuracy: round(player.sums.accuracy / c),
+        shots: round(player.sums.shots / c),
+        passes: round(player.sums.passes / c),
+        catches: round(player.sums.catches / c),
+        backstabs: round(player.sums.backstabs / c),
+        backspaced: round(player.sums.backspaced / c),
+        ballGivenAway: round(player.sums.ballGivenAway / c),
+        ballStolen: round(player.sums.ballStolen / c),
+        ballPossession: round(player.sums.ballPossession / c),
+        nearMisses: round(player.sums.nearMisses / c),
+        captureTries: round(player.sums.captureTries / c),
+        caps: round(player.sums.caps / c),
+        capPercent: round(player.sums.capPercent / c),
+        capSec: round(player.sums.capSec / c),
+        matchesPlayed: player.count,
       });
     }
 
     return rows;
-  }, [filteredRawRows, aggregationMode]);
+  }, [filteredRawRows]);
 
   const visibleColumns = useMemo(
     () => columns.filter((column) => visibleKeys.includes(column.key)),
@@ -349,29 +336,6 @@ export default function PlayerStatsBoard() {
         </h2>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-full border border-cyan-300/30 bg-slate-950/70 px-1 py-1">
-            <button
-              onClick={() => setAggregationMode("total")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                aggregationMode === "total"
-                  ? "bg-cyan-500/20 text-cyan-200 border border-cyan-400"
-                  : "text-cyan-200/60 hover:text-cyan-200"
-              }`}
-            >
-              Total Values
-            </button>
-            <button
-              onClick={() => setAggregationMode("avgMin")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                aggregationMode === "avgMin"
-                  ? "bg-cyan-500/20 text-cyan-200 border border-cyan-400"
-                  : "text-cyan-200/60 hover:text-cyan-200"
-              }`}
-            >
-              Avg / Min
-            </button>
-          </div>
-
           <select
             value={typeFilter}
             onChange={(e) =>
@@ -456,10 +420,7 @@ export default function PlayerStatsBoard() {
                   className="cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold tracking-wide text-slate-300 uppercase transition hover:text-cyan-200"
                 >
                   <span className="inline-flex items-center gap-1">
-                    {column.key === "matchesPlayed" &&
-                    aggregationMode === "avgMin"
-                      ? "Minutes"
-                      : column.label}
+                    {column.label}
                     {sortKey === column.key ? (
                       <span className="text-cyan-400">
                         {sortDir === "desc" ? "v" : "^"}
@@ -476,28 +437,25 @@ export default function PlayerStatsBoard() {
             {sortedRows.map((player) => (
               <tr
                 key={player.login}
-                className="border-b border-white/8 bg-slate-950/40 hover:bg-slate-800/30 transition"
+                className="border-b border-white/8 bg-slate-950/40"
               >
-                {visibleColumns.map((column) => {
-                  const isLoginColumn = column.key === "login";
-                  return (
-                    <td
-                      key={column.key}
-                      className="px-3 py-2 text-sm text-slate-100 whitespace-nowrap"
-                    >
-                      {isLoginColumn ? (
-                        <Link
-                          href={`/players/${player.login}`}
-                          className="text-cyan-400 hover:text-cyan-300 hover:underline"
-                        >
-                          {formatCellValue(column.key, player[column.key])}
-                        </Link>
-                      ) : (
-                        formatCellValue(column.key, player[column.key])
-                      )}
-                    </td>
-                  );
-                })}
+                {visibleColumns.map((column) => (
+                  <td
+                    key={column.key}
+                    className="px-3 py-2 text-sm text-slate-100 whitespace-nowrap"
+                  >
+                    {column.key === "login" ? (
+                      <Link
+                        href={`/players/${player.login}`}
+                        className="text-cyan-400 hover:text-cyan-300 hover:underline"
+                      >
+                        {formatCellValue(column.key, player[column.key])}
+                      </Link>
+                    ) : (
+                      formatCellValue(column.key, player[column.key])
+                    )}
+                  </td>
+                ))}
               </tr>
             ))}
 
